@@ -2,9 +2,9 @@ name: Haber Botu
 
 on:
   schedule:
-    # Her çeyrek saatin 2 dk sonrasında (13:02, 13:17, 13:32, 13:47 ...).
+    # Her yarım saatin 2 dk sonrasında (13:02, 13:32, 14:02 ...).
     # 2 dk pay, sitelerin RSS akışına son haberlerin düşmesi için.
-    - cron: "2,17,32,47 * * * *"
+    - cron: "2,32 * * * *"
   workflow_dispatch:
     inputs:
       rapor:
@@ -22,7 +22,7 @@ permissions:
 jobs:
   tara:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
