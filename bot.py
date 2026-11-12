@@ -157,6 +157,7 @@ class Haber:
     # sınıflandırma sonrası
     kategori: str = ""
     son_dakika: bool = False
+    dolayli: bool = False        # Google Haberler üzerinden geldiyse
 
     @property
     def anahtar(self) -> str:
@@ -251,7 +252,7 @@ def kaynagi_tara(kaynak: dict, durum: dict) -> tuple[list[Haber], str | None, st
     ad, kok = kaynak["ad"], kaynak["url"].rstrip("/")
     kd = durum.setdefault("kaynaklar", {}).get(ad, {})
     adaylar: list[str] = []
-    if kd.get("akis"):
+    if kd.get("akis") and "news.google.com" not in kd["akis"]:
         adaylar.append(kd["akis"])
     adaylar += kaynak.get("rss", []) or [kok + y for y in VARSAYILAN_YOLLAR]
     adaylar = list(dict.fromkeys(adaylar))
@@ -272,7 +273,25 @@ def kaynagi_tara(kaynak: dict, durum: dict) -> tuple[list[Haber], str | None, st
             if not yeni:
                 break
             adaylar = yeni
+    # Son çare: site yurt dışı/veri merkezi trafiğini engelliyorsa Google Haberler üzerinden
+    gurl = google_haberler_url(kok)
+    try:
+        haberler = akisi_ayristir(getir(gurl), ad)
+        for h in haberler:
+            h.dolayli = True
+            h.baslik = re.sub(r"\s+-\s+[^-]+$", "", h.baslik)   # " - Kaynak Adı" ekini at
+            h.ozet = ""                                          # Google'ın özeti başlığın tekrarı
+        if haberler:
+            return haberler, gurl, None
+    except Exception as e:
+        son_hata = f"{son_hata} | Google Haberler: {type(e).__name__}"
     return [], None, son_hata
+
+
+def google_haberler_url(kok: str) -> str:
+    alan = urllib.parse.urlsplit(kok).netloc.removeprefix("www.")
+    q = urllib.parse.quote(f"site:{alan} when:1d")
+    return f"https://news.google.com/rss/search?q={q}&hl=tr&gl=TR&ceid=TR:tr"
 
 
 def meta_aciklama(link: str) -> str:
@@ -572,11 +591,16 @@ def durum_buda(d: dict, simdi: datetime):
 #  Ana akış
 # --------------------------------------------------------------------------- #
 def rapor_metni(sonuclar: dict, aktif: list[dict]) -> str:
-    calisan = [k["ad"] for k in aktif if sonuclar[k["ad"]][1]]
-    bozuk = [(k["ad"], sonuclar[k["ad"]][2]) for k in aktif if not sonuclar[k["ad"]][1]]
-    satir = [f"📊 <b>Kaynak durumu</b>: {len(calisan)}/{len(aktif)} site çalışıyor"]
-    if calisan:
-        satir.append("\n✅ " + ", ".join(e(x) for x in calisan))
+    akis = {k["ad"]: sonuclar[k["ad"]][1] or "" for k in aktif}
+    dogrudan = [a for a, u in akis.items() if u and "news.google.com" not in u]
+    dolayli = [a for a, u in akis.items() if "news.google.com" in u]
+    bozuk = [(k["ad"], sonuclar[k["ad"]][2]) for k in aktif if not akis[k["ad"]]]
+    satir = [f"📊 <b>Kaynak durumu</b>: {len(dogrudan) + len(dolayli)}/{len(aktif)} site taranıyor"]
+    if dogrudan:
+        satir.append(f"\n✅ Doğrudan ({len(dogrudan)}): " + ", ".join(e(x) for x in dogrudan))
+    if dolayli:
+        satir.append(f"\n↪️ Google Haberler üzerinden ({len(dolayli)}; site doğrudan erişimi engelliyor): "
+                     + ", ".join(e(x) for x in dolayli))
     if bozuk:
         satir.append("\n❌ Ulaşılamayan:")
         satir += [f"• {e(a)} — <i>{e((h or '')[:120])}</i>" for a, h in bozuk]
@@ -644,7 +668,9 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
         if anahtar in gorulen:
             continue
         gorulen[anahtar] = simdi.timestamp()
-        if h.tarih and simdi - h.tarih > timedelta(minutes=g["max_haber_yasi_dk"]):
+        # Google Haberler gecikmeli indeksler; o kaynaklara daha geniş pencere tanı
+        yas_siniri = max(g["max_haber_yasi_dk"], 360) if h.dolayli else g["max_haber_yasi_dk"]
+        if h.tarih and simdi - h.tarih > timedelta(minutes=yas_siniri):
             continue
         yeniler.append(h)
 
@@ -681,7 +707,7 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
     # 5) Özetle
     for gr in tekli:
         basit_ozet(gr)
-        if not gr.ozet:   # sitemap kaynaklı, spotu olmayan haber
+        if not gr.ozet and not gr.ana.dolayli:   # sitemap kaynaklı, spotu olmayan haber
             gr.ana.ozet = meta_aciklama(gr.ana.link)
             basit_ozet(gr)
     api = os.environ.get("ANTHROPIC_API_KEY")
