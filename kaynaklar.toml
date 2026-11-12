@@ -1,0 +1,138 @@
+# ============================================================
+#  HABER KAYNAKLARI — her satır bir kaynak
+#  ad      : mesajda görünecek kaynak adı
+#  url     : sitenin ana adresi
+#  rss     : (isteğe bağlı) RSS adres(ler)i; verilmezse bot /export/rss -> /rss ->
+#            /export/newsmap -> ana sayfadaki RSS bağlantısı -> Google Haberler dener
+#  kategori: hiçbir konu eşleşmezse kullanılacak varsayılan konu
+#  dil     : "en" ise haber Türkçeye çevrilir (Claude API anahtarı gerekir)
+#  google  : true ise site doğrudan taranmaz, Google Haberler üzerinden alınır
+#  aktif   : false ise taranmaz
+# ============================================================
+
+kaynak = [
+  # bilgin.pro/referanslar'daki siteler (12.11.2026 itibarıyla 42 logo)
+  { ad = "CNBC-e", url = "https://www.cnbce.com", kategori = "ekonomi", aktif = true },
+  { ad = "tv100", url = "https://www.tv100.com", aktif = true },
+  { ad = "Halk TV", url = "https://halktv.com.tr", aktif = true },
+  { ad = "Nefes", url = "https://www.nefes.com.tr", aktif = true },
+  { ad = "Oda TV", url = "https://www.odatv.com", aktif = true },
+  { ad = "Oksijen", url = "https://gazeteoksijen.com", aktif = true },
+  { ad = "Dünya", url = "https://www.dunya.com", kategori = "ekonomi", aktif = true },
+  { ad = "Haber Global", url = "https://www.haberglobal.com.tr", aktif = true },
+  { ad = "Ekonomim", url = "https://www.ekonomim.com", kategori = "ekonomi", aktif = true },
+  { ad = "Aydınlık", url = "https://www.aydinlik.com.tr", aktif = true },
+  { ad = "Yeniçağ", url = "https://www.yenicaggazetesi.com.tr", aktif = true },
+  { ad = "Kontra Spor", url = "https://www.kontraspor.com", kategori = "spor", aktif = true },
+  { ad = "İnternet Haber", url = "https://www.internethaber.com", aktif = true },
+  { ad = "F5 Haber", url = "https://www.f5haber.com", aktif = true },
+  { ad = "KRT TV", url = "https://www.krttv.com.tr", aktif = false, not = "GitHub sunucularından erişimi engelliyor, Google Haberler'de de çıkmıyor (12.11.2026)" },
+  { ad = "Borsamatik", url = "https://www.borsamatik.com.tr", kategori = "borsa", aktif = true },
+  { ad = "Monay", url = "https://www.monay.com.tr", kategori = "ekonomi", aktif = true },
+  { ad = "Gerçek Gündem", url = "https://www.gercekgundem.com", aktif = true },
+  { ad = "HaberEt", url = "https://www.haberet.com", aktif = true },
+  { ad = "Nokta Gazetesi", url = "https://www.noktagazetesi.com.tr", aktif = true },
+  { ad = "Yeni Ankara", url = "https://www.yeniankara.com.tr", aktif = true },
+  { ad = "Artı Gerçek", url = "https://artigercek.com", aktif = true },
+  { ad = "Ekran Haber", url = "https://ekranhaber.com", aktif = true },
+  { ad = "Haber Ankara", url = "https://www.haberankara.com", aktif = true },
+  { ad = "Ulusal", url = "https://www.ulusal.com.tr", aktif = true },
+  { ad = "Süper Haber", url = "https://www.superhaber.com", aktif = true },
+  { ad = "Para Durumu", url = "https://www.paradurumu.com", kategori = "ekonomi", aktif = true },
+  { ad = "Haber3", url = "https://www.haber3.com", aktif = true },
+  { ad = "Medyatava", url = "https://www.medyatava.com", kategori = "medya", aktif = true },
+  { ad = "Medyaradar", url = "https://www.medyaradar.com", aktif = false, not = "GitHub sunucularından erişimi engelliyor, Google Haberler'de de çıkmıyor (12.11.2026)" },
+  { ad = "Medyafaresi", url = "https://www.medyafaresi.com", kategori = "medya", aktif = true },
+  { ad = "Gazeteoku", url = "https://www.gazeteoku.com", aktif = true },
+  { ad = "Haber Fokus", url = "https://www.haberfokus.com", aktif = true },
+
+  # EK KAYNAKLAR (12.11.2026) — YERLİ
+
+  # Gündem / siyaset — en çok okunan ve güvenilir yerli kaynaklar
+  { ad = "TRT Haber", url = "https://www.trthaber.com", rss = ["https://www.trthaber.com/sondakika_articles.rss", "https://www.trthaber.com/manset_articles.rss"], aktif = true },
+  { ad = "NTV", url = "https://www.ntv.com.tr", rss = ["https://www.ntv.com.tr/son-dakika.rss", "https://www.ntv.com.tr/gundem.rss"], aktif = true },
+  { ad = "Habertürk", url = "https://www.haberturk.com", rss = ["https://www.haberturk.com/rss"], aktif = true },
+  { ad = "CNN Türk", url = "https://www.cnnturk.com", rss = ["https://www.cnnturk.com/feed/rss/all/news"], aktif = true },
+  { ad = "Sözcü", url = "https://www.sozcu.com.tr", aktif = true },
+  { ad = "Cumhuriyet", url = "https://www.cumhuriyet.com.tr", rss = ["https://www.cumhuriyet.com.tr/rss/son_dakika.xml"], aktif = true },
+  { ad = "Hürriyet", url = "https://www.hurriyet.com.tr", rss = ["https://www.hurriyet.com.tr/rss/anasayfa"], aktif = true },
+  { ad = "Milliyet", url = "https://www.milliyet.com.tr", rss = ["https://www.milliyet.com.tr/rss/rssnew/gundemrss.xml"], aktif = true },
+  { ad = "Sabah", url = "https://www.sabah.com.tr", rss = ["https://www.sabah.com.tr/rss/anasayfa.xml"], aktif = true },
+  { ad = "T24", url = "https://t24.com.tr", rss = ["https://t24.com.tr/rss"], aktif = true },
+  { ad = "BirGün", url = "https://www.birgun.net", aktif = true },
+  { ad = "Sondakika.com", url = "https://www.sondakika.com", aktif = true },
+  { ad = "Haberler.com", url = "https://www.haberler.com", aktif = true },
+  { ad = "Medyascope", url = "https://medyascope.tv", rss = ["https://medyascope.tv/feed/"], aktif = true },
+  { ad = "BBC Türkçe", url = "https://www.bbc.com/turkce", rss = ["https://feeds.bbci.co.uk/turkce/rss.xml"], aktif = true },
+  { ad = "DW Türkçe", url = "https://www.dw.com/tr", rss = ["https://rss.dw.com/rdf/rss-tur-all"], aktif = true },
+  { ad = "Euronews Türkçe", url = "https://tr.euronews.com", rss = ["https://tr.euronews.com/rss"], aktif = true },
+  { ad = "Independent Türkçe", url = "https://www.indyturk.com", aktif = true },
+
+  # Finans / borsa / şirketler
+  { ad = "Bloomberg HT", url = "https://www.bloomberght.com", rss = ["https://www.bloomberght.com/rss"], kategori = "ekonomi", aktif = true },
+  { ad = "Investing.com Türkiye", url = "https://tr.investing.com", rss = ["https://tr.investing.com/rss/news.rss"], kategori = "borsa", aktif = true },
+  { ad = "Paraanaliz", url = "https://www.paraanaliz.com", rss = ["https://www.paraanaliz.com/feed/"], kategori = "ekonomi", aktif = true },
+  { ad = "Borsa Gündem", url = "https://www.borsagundem.com.tr", kategori = "borsa", aktif = true },
+  { ad = "Fortune Türkiye", url = "https://www.fortuneturkey.com", kategori = "sirketler", aktif = true },
+
+  # Teknoloji
+  { ad = "Webtekno", url = "https://www.webtekno.com", rss = ["https://www.webtekno.com/rss.xml"], kategori = "teknoloji", aktif = true },
+  { ad = "ShiftDelete.Net", url = "https://shiftdelete.net", rss = ["https://shiftdelete.net/feed"], kategori = "teknoloji", aktif = true },
+  { ad = "Webrazzi", url = "https://webrazzi.com", rss = ["https://webrazzi.com/feed"], kategori = "teknoloji", aktif = true },
+  { ad = "DonanımHaber", url = "https://www.donanimhaber.com", rss = ["https://www.donanimhaber.com/rss/tum/"], kategori = "teknoloji", aktif = true },
+
+  # Spor
+  { ad = "NTV Spor", url = "https://www.ntvspor.net", rss = ["https://www.ntvspor.net/rss"], kategori = "spor", aktif = true },
+  { ad = "Fanatik", url = "https://www.fanatik.com.tr", kategori = "spor", aktif = true },
+  { ad = "Fotomaç", url = "https://www.fotomac.com.tr", rss = ["https://www.fotomac.com.tr/rss/anasayfa.xml"], kategori = "spor", aktif = true },
+  { ad = "TRT Spor", url = "https://www.trthaber.com", rss = ["https://www.trthaber.com/spor_articles.rss"], kategori = "spor", aktif = true },
+  { ad = "Ajansspor", url = "https://ajansspor.com", kategori = "spor", aktif = true },
+
+  # Magazin
+  { ad = "Hürriyet Kelebek", url = "https://www.hurriyet.com.tr", rss = ["https://www.hurriyet.com.tr/rss/kelebek"], kategori = "magazin", aktif = true },
+  { ad = "Milliyet Magazin", url = "https://www.milliyet.com.tr", rss = ["https://www.milliyet.com.tr/rss/rssnew/magazinrss.xml"], kategori = "magazin", aktif = true },
+
+  # EK KAYNAKLAR — YABANCI (dil = "en": özet Türkçeye çevrilir)
+
+  # Dünya siyaseti / genel (İngilizce, Türkçeye çevrilir)
+  { ad = "Reuters", url = "https://www.reuters.com", kategori = "dunya", dil = "en", google = true, aktif = true },
+  { ad = "AP News", url = "https://apnews.com", kategori = "dunya", dil = "en", google = true, aktif = true },
+  { ad = "BBC News", url = "https://www.bbc.com/news", rss = ["https://feeds.bbci.co.uk/news/world/rss.xml"], kategori = "dunya", dil = "en", aktif = true },
+  { ad = "The Guardian", url = "https://www.theguardian.com", rss = ["https://www.theguardian.com/world/rss"], kategori = "dunya", dil = "en", aktif = true },
+  { ad = "Al Jazeera", url = "https://www.aljazeera.com", rss = ["https://www.aljazeera.com/xml/rss/all.xml"], kategori = "dunya", dil = "en", aktif = true },
+  { ad = "The New York Times", url = "https://www.nytimes.com", rss = ["https://rss.nytimes.com/services/xml/rss/nyt/World.xml"], kategori = "dunya", dil = "en", aktif = true },
+  { ad = "Politico", url = "https://www.politico.com", rss = ["https://rss.politico.com/politics-news.xml"], kategori = "dunya", dil = "en", aktif = true },
+
+  # Finans / borsa / şirketler
+  { ad = "CNBC", url = "https://www.cnbc.com", rss = ["https://www.cnbc.com/id/100003114/device/rss/rss.html"], kategori = "ekonomi", dil = "en", aktif = true },
+  { ad = "Bloomberg", url = "https://www.bloomberg.com", rss = ["https://feeds.bloomberg.com/markets/news.rss"], kategori = "borsa", dil = "en", aktif = true },
+  { ad = "MarketWatch", url = "https://www.marketwatch.com", rss = ["https://feeds.content.dowjones.io/public/rss/mw_topstories"], kategori = "borsa", dil = "en", aktif = true },
+  { ad = "Financial Times", url = "https://www.ft.com", rss = ["https://www.ft.com/rss/home"], kategori = "ekonomi", dil = "en", aktif = true },
+  { ad = "Yahoo Finance", url = "https://finance.yahoo.com", rss = ["https://finance.yahoo.com/news/rssindex"], kategori = "sirketler", dil = "en", aktif = true },
+
+  # Teknoloji
+  { ad = "TechCrunch", url = "https://techcrunch.com", rss = ["https://techcrunch.com/feed/"], kategori = "teknoloji", dil = "en", aktif = true },
+  { ad = "The Verge", url = "https://www.theverge.com", rss = ["https://www.theverge.com/rss/index.xml"], kategori = "teknoloji", dil = "en", aktif = true },
+  { ad = "Ars Technica", url = "https://arstechnica.com", rss = ["https://feeds.arstechnica.com/arstechnica/index"], kategori = "teknoloji", dil = "en", aktif = true },
+  { ad = "Wired", url = "https://www.wired.com", rss = ["https://www.wired.com/feed/rss"], kategori = "teknoloji", dil = "en", aktif = true },
+
+  # Spor
+  { ad = "BBC Sport", url = "https://www.bbc.com/sport", rss = ["https://feeds.bbci.co.uk/sport/rss.xml"], kategori = "spor", dil = "en", aktif = true },
+  { ad = "ESPN", url = "https://www.espn.com", rss = ["https://www.espn.com/espn/rss/news"], kategori = "spor", dil = "en", aktif = true },
+  { ad = "Sky Sports", url = "https://www.skysports.com", rss = ["https://www.skysports.com/rss/12040"], kategori = "spor", dil = "en", aktif = true },
+
+  # Magazin / eğlence
+  { ad = "Variety", url = "https://variety.com", rss = ["https://variety.com/feed/"], kategori = "magazin", dil = "en", aktif = true },
+  { ad = "The Hollywood Reporter", url = "https://www.hollywoodreporter.com", rss = ["https://www.hollywoodreporter.com/feed/"], kategori = "magazin", dil = "en", aktif = true },
+
+  # bilgin.pro listesindeki diğer siteler + Anadolu Ajansı (kapalı olanlar haber sitesi değil)
+  { ad = "Gazete Duvar", url = "https://www.gazeteduvar.com.tr", aktif = false, not = "Mart 2025'te yayın hayatına son verdiği bildiriliyor" },
+  { ad = "Chip", url = "https://www.chip.com.tr", kategori = "teknoloji", aktif = true },
+  { ad = "Teknolojioku", url = "https://www.teknolojioku.com", kategori = "teknoloji", aktif = true },
+  { ad = "Elele", url = "https://www.elele.com.tr", kategori = "magazin", aktif = true },
+  { ad = "Show Radyo", url = "https://www.showradyo.com.tr", aktif = false, not = "Radyo sitesi" },
+  { ad = "Radyo Viva", url = "https://www.radyoviva.com.tr", aktif = false, not = "Radyo sitesi" },
+  { ad = "Sacit Aslan", url = "https://www.sacitaslan.com", aktif = false, not = "Kişisel gazeteci sitesi" },
+  { ad = "Basın İlan Kurumu", url = "https://bik.gov.tr", aktif = false, not = "Kurum sitesi" },
+  { ad = "Anadolu Ajansı", url = "https://www.aa.com.tr", rss = ["https://www.aa.com.tr/tr/rss/default?cat=guncel"], aktif = true, not = "Referans sayfasındaki logo bilgin.pro'ya gidiyor; AA'nın kendi RSS'i" },
+]
