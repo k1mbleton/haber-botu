@@ -4,11 +4,19 @@ Telegram Haber Botu
 -------------------
 ayarlar.toml'daki haber sitelerinin RSS akışlarını tarar, takip edilen
 kategorilerdeki yeni haberleri bulur, aynı olayı farklı sitelerden tek
-mesajda birleştirir ve Telegram'a şu biçimde gönderir:
+mesaja indirir ve haberi ilk yayımlayan siteyi kaynak göstererek
+Telegram'a gönderir.
 
+Her çalıştırmada tamamlanmış son 15 dakikalık aralığı işler
+(ör. 13:32'de çalışırsa 13:15-13:30 arasında yayımlanan haberler):
+
+    🗞 13:15 – 13:30 Ana Haberleri
+    ────────────
     Özet Başlığı
-    Özet
-    Haber Kaynağı
+    Özet (en fazla 100 karakter)
+    📰 Kaynak: İlk yayımlayan site
+    🕒 13:22
+    #Konu
 
 Yalnızca Python standart kütüphanesini kullanır (kurulum gerektirmez).
 
@@ -52,6 +60,7 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 VARSAYILAN_YOLLAR = ["/export/rss", "/rss", "/export/newsmap"]
 GORULEN_SAKLAMA_GUN = 4
 GONDERILEN_SAKLAMA_SAAT = 12
+ARALIK = timedelta(minutes=15)
 HATA_UYARI_ESIGI = 8          # art arda 8 tur (~2 saat) hata -> tek seferlik uyarı
 UTC = timezone.utc
 TR = timezone(timedelta(hours=3))
@@ -424,30 +433,38 @@ def grupla(haberler: list[Haber], esik: float) -> list[Grup]:
 SIRALI_ONEK = re.compile(r"^\s*(son dakika|flaş|sıcak gelişme)\s*[:|!\-–—]*\s*", re.I)
 
 
-def basit_ozet(g: Grup):
+def ozet_kisalt(s: str, n: int) -> str:
+    """İlk cümle sığıyorsa onu, sığmıyorsa kelime sınırında kesilmiş halini döner."""
+    s = s.strip()
+    # "12. hafta" gibi sayılarda bölmemek için noktadan önce harf, sonra büyük harf aranır
+    ilk = re.split(r"(?<=[^\W\d][.!?])\s+(?=[A-ZÇĞİÖŞÜ\"“'])", s)[0]
+    return ilk if 30 <= len(ilk) <= n else kisalt(s, n - 1)   # "…" dahil n karakter
+
+
+def basit_ozet(g: Grup, n: int = 100):
     h = g.ana
     g.ozet_baslik = SIRALI_ONEK.sub("", h.baslik) or h.baslik
     spot = next((x.ozet for x in g.haberler if x.ozet and x.ozet != x.baslik), "")
-    g.ozet = ilk_cumleler(spot) if spot else ""
+    g.ozet = ozet_kisalt(spot, n) if spot else ""
 
 
-def claude_ozetle(gruplar: list[Grup], model: str, anahtar: str) -> int:
+def claude_ozetle(gruplar: list[Grup], model: str, anahtar: str, n: int = 100) -> int:
     """Grupları 15'erli paketler halinde Claude'a özetletir. Başarılı grup sayısını döner."""
     basarili = 0
     for i in range(0, len(gruplar), 15):
         paket = gruplar[i:i + 15]
         girdi = [{
-            "id": n,
+            "id": k,
             "haberler": [{"kaynak": h.kaynak, "baslik": h.baslik, "spot": kisalt(h.ozet, 700)}
                          for h in g.haberler],
-        } for n, g in enumerate(paket)]
+        } for k, g in enumerate(paket)]
         istem = (
             "Aşağıda Türk haber sitelerinden gelen haber grupları var. Her grup aynı olayı "
             "anlatan bir veya birkaç haberden oluşuyor. Her grup için Türkçe:\n"
             "- ozet_baslik: en fazla 12 kelime, tarafsız, bilgilendirici; tıklama tuzağı, "
             "büyük harf ve 'SON DAKİKA' gibi ekler olmadan.\n"
-            "- ozet: 2-3 cümle; yalnızca verilen başlık ve spotlardaki bilgilere dayan, "
-            "yorum veya tahmin ekleme. Bilgi yetersizse tek cümle yeter.\n"
+            f"- ozet: tek cümle, EN FAZLA {n} karakter; yalnızca verilen başlık ve spotlardaki "
+            "bilgilere dayan, başlığı tekrarlama, yorum veya tahmin ekleme.\n"
             "Yalnızca JSON dizisi döndür, başka hiçbir şey yazma: "
             '[{"id": 0, "ozet_baslik": "...", "ozet": "..."}]\n\n'
             + json.dumps(girdi, ensure_ascii=False)
@@ -467,10 +484,10 @@ def claude_ozetle(gruplar: list[Grup], model: str, anahtar: str) -> int:
             metin = "".join(b.get("text", "") for b in yanit.get("content", []))
             m = re.search(r"\[.*\]", metin, re.S)
             for o in json.loads(m.group(0)) if m else []:
-                n = o.get("id")
-                if isinstance(n, int) and 0 <= n < len(paket) and o.get("ozet_baslik"):
-                    paket[n].ozet_baslik = o["ozet_baslik"].strip()
-                    paket[n].ozet = (o.get("ozet") or "").strip()
+                k = o.get("id")
+                if isinstance(k, int) and 0 <= k < len(paket) and o.get("ozet_baslik"):
+                    paket[k].ozet_baslik = o["ozet_baslik"].strip()
+                    paket[k].ozet = ozet_kisalt(o.get("ozet") or "", n)
                     basarili += 1
         except Exception as e:
             log(f"[claude] özetleme hatası, yedek yöntem kullanılacak: {e}")
@@ -485,18 +502,23 @@ def e(s: str) -> str:
 
 
 def mesaj_olustur(g: Grup, etiket: str) -> str:
-    satirlar = []
-    if g.son_dakika:
-        satirlar.append("🔴 <b>SON DAKİKA</b>")
-    satirlar.append(f"<b>{e(g.ozet_baslik)}</b>")
+    h = g.ana                       # grubun en erken yayımlanan haberi
+    satirlar = [f"<b>{e(g.ozet_baslik)}</b>"]
     if g.ozet:
-        satirlar += ["", e(g.ozet)]
-    kaynaklar = " · ".join(
-        f'<a href="{html.escape(h.link, quote=True)}">{e(h.kaynak)}</a>' for h in g.haberler)
-    satirlar += ["", f"📰 Kaynak: {kaynaklar}"]
-    zaman = g.tarih.astimezone(TR).strftime("%H:%M")
-    satirlar.append(f"🏷 #{etiket.replace(' ', '')}  🕒 {zaman}")
+        satirlar.append(e(g.ozet))
+    satirlar.append(f'📰 Kaynak: <a href="{html.escape(h.link, quote=True)}">{e(h.kaynak)}</a>')
+    zaman = (h.tarih or g.tarih).astimezone(TR).strftime("%H:%M")
+    satirlar.append(f"🕒 {zaman}")
+    etiketler = [f"#{etiket.replace(' ', '')}"]
+    if g.son_dakika:
+        etiketler.append("#SonDakika")
+    satirlar.append(" ".join(etiketler))
     return "\n".join(satirlar)
+
+
+def baslik_mesaji(bas: datetime, son: datetime) -> str:
+    b, s_ = bas.astimezone(TR), son.astimezone(TR)
+    return f"🗞 <b>{b:%H:%M} – {s_:%H:%M} Ana Haberleri</b>\n<i>{b:%d.%m.%Y}</i>"
 
 
 class Telegram:
@@ -583,6 +605,7 @@ def durum_kaydet(d: dict):
 def durum_buda(d: dict, simdi: datetime):
     sinir = (simdi - timedelta(days=GORULEN_SAKLAMA_GUN)).timestamp()
     d["gorulen"] = {k: v for k, v in d.get("gorulen", {}).items() if v >= sinir}
+    d["ilk"] = {k: v for k, v in d.get("ilk", {}).items() if v >= sinir and k not in d["gorulen"]}
     sinir2 = (simdi - timedelta(hours=GONDERILEN_SAKLAMA_SAAT)).timestamp()
     d["gonderilen"] = [x for x in d.get("gonderilen", []) if x["t"] >= sinir2]
 
@@ -656,83 +679,107 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
                 tg.gonder(f"⚠️ {e(k['ad'])} yaklaşık 2 saattir taranamıyor:\n<i>{e(hata or '')}</i>", False)
         log(f"[tara] {k['ad']:<16} {len(haberler):>3} haber  {akis or 'HATA: ' + str(hata)}")
 
-    if rapor or ilk_calisma:
+    if rapor:
         tg.gonder(rapor_metni(sonuclar, aktif), False)
 
-    # 2) Yeni olanları ayıkla
-    yeniler, gorulen = [], durum["gorulen"]
-    tekil = {}
+    # 2) Hangi 15 dakikalık aralık(lar) işlenecek?
+    E = ceyrek_taban(simdi)                      # son tamamlanmış aralığın bitişi
+    son_isaret = durum.get("son_pencere")
+    taze = not son_isaret
+    if taze:
+        baslangic = E - ARALIK
+    else:
+        geriye = E - ARALIK * int(g.get("max_geriye_aralik", 4))
+        baslangic = max(datetime.fromisoformat(son_isaret), geriye)
+    if baslangic >= E:
+        log(f"[bitti] {E.astimezone(TR):%H:%M} aralığı zaten işlenmiş")
+        return kaydet_ve_cik(durum, simdi, kuru)
+    pencereler = []
+    t = baslangic
+    while t < E:
+        pencereler.append((t, t + ARALIK, []))
+        t += ARALIK
+
+    # 3) Haberleri aralıklara dağıt
+    gorulen, ilk = durum["gorulen"], durum.setdefault("ilk", {})
+    gec_sinir = timedelta(minutes=g["max_haber_yasi_dk"])
+    tekil: dict[str, Haber] = {}
     for h in tum:
         tekil.setdefault(h.anahtar, h)
+    ertelenen = gec = 0
     for anahtar, h in tekil.items():
         if anahtar in gorulen:
             continue
-        gorulen[anahtar] = simdi.timestamp()
-        # Google Haberler gecikmeli indeksler; o kaynaklara daha geniş pencere tanı
-        yas_siniri = max(g["max_haber_yasi_dk"], 360) if h.dolayli else g["max_haber_yasi_dk"]
-        if h.tarih and simdi - h.tarih > timedelta(minutes=yas_siniri):
+        if not h.tarih:                          # tarihsiz haber: ilk görüldüğü an
+            ilk.setdefault(anahtar, simdi.timestamp())
+            h.tarih = datetime.fromtimestamp(ilk[anahtar], UTC)
+        if h.tarih >= E:                         # henüz kapanmamış aralık -> sonraki tura
+            ertelenen += 1
             continue
-        yeniler.append(h)
+        gorulen[anahtar] = simdi.timestamp()
+        if h.tarih >= baslangic:
+            for bas, son, liste in pencereler:
+                if bas <= h.tarih < son:
+                    liste.append(h)
+                    break
+        elif not taze and simdi - h.tarih <= gec_sinir:
+            pencereler[0][2].append(h)           # geç yayına giren (ör. Google) haber
+            gec += 1
+    log(f"[aralık] {len(pencereler)} aralık, {ertelenen} haber sonraki tura ertelendi, {gec} geç gelen")
 
-    if ilk_calisma:
-        log(f"[ilk çalışma] {len(gorulen)} mevcut haber 'görüldü' olarak işaretlendi; "
-            "bundan sonraki turlarda yalnızca yeni haberler gönderilecek.")
-        tg.gonder("🤖 Haber botu kuruldu. Bundan sonra yeni haberler 15 dakikada bir gelecek.", False)
-        if not kuru:
-            durum_buda(durum, simdi)
-            durum_kaydet(durum)
-        return 0
-
-    # 3) Sınıfla + filtrele
+    # 4) Her aralık için: sınıfla, birleştir, özetle, gönder
     sinif = Siniflandirici(ayar)
-    secilen = [h for h in yeniler if sinif.sinifla(h)]
-    log(f"[filtre] {len(tum)} haber tarandı, {len(yeniler)} yeni, {len(secilen)} takip edilen kategoride")
-
-    # 4) Grupla ve daha önce gönderilmiş olayları ele
-    gruplar = grupla(secilen, g.get("benzerlik_esigi", 0.5))
-    onceki = [set(x["j"]) for x in durum.get("gonderilen", [])]
-    gruplar = [gr for gr in gruplar
-               if not any(benzerlik(gr.jeton, o) >= g.get("benzerlik_esigi", 0.5) for o in onceki)]
-    gruplar.sort(key=lambda gr: gr.tarih)
-    if not gruplar:
-        log("[bitti] gönderilecek yeni haber yok")
-        if not kuru:
-            durum_buda(durum, simdi)
-            durum_kaydet(durum)
-        return 0
-
-    tekli = gruplar[: g["max_mesaj"]]
-    fazla = gruplar[g["max_mesaj"]:]
-
-    # 5) Özetle
-    for gr in tekli:
-        basit_ozet(gr)
-        if not gr.ozet and not gr.ana.dolayli:   # sitemap kaynaklı, spotu olmayan haber
-            gr.ana.ozet = meta_aciklama(gr.ana.link)
-            basit_ozet(gr)
-    api = os.environ.get("ANTHROPIC_API_KEY")
-    if api and g.get("claude_kullan", True):
-        n = claude_ozetle(tekli, g.get("claude_model", "claude-haiku-5-5"), api)
-        log(f"[claude] {n}/{len(tekli)} grup Claude ile özetlendi")
-
-    # 6) Gönder
-    gonderilen = 0
-    for gr in tekli:
-        etiket = sinif.etiket.get(gr.ana.kategori, gr.ana.kategori)
-        if tg.gonder(mesaj_olustur(gr, etiket)):
-            gonderilen += 1
+    esik = g.get("benzerlik_esigi", 0.5)
+    n_ozet = int(g.get("ozet_max_karakter", 100))
+    api = os.environ.get("ANTHROPIC_API_KEY") if g.get("claude_kullan", True) else None
+    bekle = 0 if kuru else g.get("mesaj_arasi_sn", 1.5)
+    for bas, son, liste in pencereler:
+        secilen = [h for h in liste if sinif.sinifla(h)]
+        gruplar = grupla(secilen, esik)
+        onceki = [set(x["j"]) for x in durum.get("gonderilen", [])]
+        gruplar = [gr for gr in gruplar if not any(benzerlik(gr.jeton, o) >= esik for o in onceki)]
+        gruplar.sort(key=lambda gr: gr.tarih)
+        log(f"[{bas.astimezone(TR):%H:%M}-{son.astimezone(TR):%H:%M}] {len(liste)} yeni, "
+            f"{len(secilen)} takip edilen, {len(gruplar)} mesaj")
+        if not gruplar and not g.get("bos_araligi_bildir", False):
+            continue
+        tg.gonder(baslik_mesaji(bas, son), False)
+        time.sleep(bekle)
+        if not gruplar:
+            tg.gonder("<i>Bu aralıkta takip edilen konularda yeni haber yok.</i>", False)
+            continue
+        tekli, fazla = gruplar[: g["max_mesaj"]], gruplar[g["max_mesaj"]:]
+        for gr in tekli:
+            basit_ozet(gr, n_ozet)
+            if not gr.ozet and not gr.ana.dolayli:
+                gr.ana.ozet = meta_aciklama(gr.ana.link)
+                basit_ozet(gr, n_ozet)
+        if api:
+            k = claude_ozetle(tekli, g.get("claude_model", "claude-haiku-5-5"), api, n_ozet)
+            log(f"[claude] {k}/{len(tekli)} grup Claude ile özetlendi")
+        for gr in tekli:
+            etiket = sinif.etiket.get(gr.ana.kategori, gr.ana.kategori)
+            tg.gonder(mesaj_olustur(gr, etiket))
             durum.setdefault("gonderilen", []).append({"t": simdi.timestamp(), "j": sorted(gr.jeton)})
-        time.sleep(0 if kuru else g.get("mesaj_arasi_sn", 1.5))
-    if fazla:
-        satirlar = [f'• <a href="{html.escape(gr.ana.link, quote=True)}">{e(gr.ana.baslik)}</a> '
-                    f"<i>({e(gr.ana.kaynak)})</i>" for gr in fazla]
-        for m in parcala(satirlar, f"🗂 <b>Diğer haberler</b> ({len(fazla)})"):
-            tg.gonder(m, False)
-            time.sleep(0 if kuru else g.get("mesaj_arasi_sn", 1.5))
-        for gr in fazla:
-            durum.setdefault("gonderilen", []).append({"t": simdi.timestamp(), "j": sorted(gr.jeton)})
+            time.sleep(bekle)
+        if fazla:
+            satirlar = [f'• <a href="{html.escape(gr.ana.link, quote=True)}">{e(gr.ana.baslik)}</a> '
+                        f"<i>({e(gr.ana.kaynak)}, {gr.tarih.astimezone(TR):%H:%M})</i>" for gr in fazla]
+            for m in parcala(satirlar, f"🗂 <b>Diğer haberler</b> ({len(fazla)})"):
+                tg.gonder(m, False)
+                time.sleep(bekle)
+            for gr in fazla:
+                durum.setdefault("gonderilen", []).append({"t": simdi.timestamp(), "j": sorted(gr.jeton)})
 
-    log(f"[bitti] {gonderilen} mesaj + {len(fazla)} haber listede gönderildi")
+    durum["son_pencere"] = E.isoformat()
+    return kaydet_ve_cik(durum, simdi, kuru)
+
+
+def ceyrek_taban(t: datetime) -> datetime:
+    return t.replace(minute=t.minute - t.minute % 15, second=0, microsecond=0)
+
+
+def kaydet_ve_cik(durum: dict, simdi: datetime, kuru: bool) -> int:
     if not kuru:
         durum_buda(durum, simdi)
         durum_kaydet(durum)
