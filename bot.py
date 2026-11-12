@@ -7,15 +7,15 @@ kategorilerdeki yeni haberleri bulur, aynı olayı farklı sitelerden tek
 mesaja indirir ve haberi ilk yayımlayan siteyi kaynak göstererek
 Telegram'a gönderir.
 
-Her çalıştırmada tamamlanmış son 15 dakikalık aralığı işler
-(ör. 13:32'de çalışırsa 13:15-13:30 arasında yayımlanan haberler):
+Her çalıştırmada tamamlanmış son 30 dakikalık aralığı işler
+(ör. 14:02'de çalışırsa 13:30-14:00 arasında yayımlanan haberler):
 
-    🗞 13:15 – 13:30 Ana Haberleri
+    🗞 13:30 – 14:00 Ana Haberleri
     ────────────
     Özet Başlığı
-    Özet (en fazla 100 karakter)
+    200-300 kelimelik özet (yabancı kaynaklar Türkçeye çevrilir)
     📰 Kaynak: İlk yayımlayan site
-    🕒 13:22
+    🕒 13:42
     #Konu
 
 Yalnızca Python standart kütüphanesini kullanır (kurulum gerektirmez).
@@ -53,6 +53,7 @@ from pathlib import Path
 
 KOK = Path(__file__).resolve().parent
 AYAR_DOSYASI = KOK / "ayarlar.toml"
+KAYNAK_DOSYASI = KOK / "kaynaklar.toml"
 DURUM_DOSYASI = KOK / "data" / "durum.json"
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -60,7 +61,6 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 VARSAYILAN_YOLLAR = ["/export/rss", "/rss", "/export/newsmap"]
 GORULEN_SAKLAMA_GUN = 4
 GONDERILEN_SAKLAMA_SAAT = 12
-ARALIK = timedelta(minutes=15)
 HATA_UYARI_ESIGI = 8          # art arda 8 tur (~2 saat) hata -> tek seferlik uyarı
 UTC = timezone.utc
 TR = timezone(timedelta(hours=3))
@@ -167,6 +167,9 @@ class Haber:
     kategori: str = ""
     son_dakika: bool = False
     dolayli: bool = False        # Google Haberler üzerinden geldiyse
+    yabanci: bool = False        # Türkçe dışında bir dilde
+    varsayilan_kat: str = ""     # kaynağın ana konusu (ör. Webtekno -> teknoloji)
+    yeni_kaynak: bool = False    # kaynak ilk kez taranıyor
 
     @property
     def anahtar(self) -> str:
@@ -266,7 +269,9 @@ def kaynagi_tara(kaynak: dict, durum: dict) -> tuple[list[Haber], str | None, st
     adaylar += kaynak.get("rss", []) or [kok + y for y in VARSAYILAN_YOLLAR]
     adaylar = list(dict.fromkeys(adaylar))
     son_hata = None
-    for deneme in range(2):
+    if kaynak.get("google"):      # siteye doğrudan erişim yok/yasak: yalnızca Google Haberler
+        adaylar = []
+    for deneme in range(2 if adaylar else 0):
         for url in adaylar:
             try:
                 haberler = akisi_ayristir(getir(url), ad)
@@ -283,7 +288,7 @@ def kaynagi_tara(kaynak: dict, durum: dict) -> tuple[list[Haber], str | None, st
                 break
             adaylar = yeni
     # Son çare: site yurt dışı/veri merkezi trafiğini engelliyorsa Google Haberler üzerinden
-    gurl = google_haberler_url(kok)
+    gurl = google_haberler_url(kok, kaynak.get("dil", "tr"))
     try:
         haberler = akisi_ayristir(getir(gurl), ad)
         for h in haberler:
@@ -297,10 +302,38 @@ def kaynagi_tara(kaynak: dict, durum: dict) -> tuple[list[Haber], str | None, st
     return [], None, son_hata
 
 
-def google_haberler_url(kok: str) -> str:
+def google_haberler_url(kok: str, dil: str = "tr") -> str:
     alan = urllib.parse.urlsplit(kok).netloc.removeprefix("www.")
     q = urllib.parse.quote(f"site:{alan} when:1d")
-    return f"https://news.google.com/rss/search?q={q}&hl=tr&gl=TR&ceid=TR:tr"
+    if dil == "tr":
+        return f"https://news.google.com/rss/search?q={q}&hl=tr&gl=TR&ceid=TR:tr"
+    return f"https://news.google.com/rss/search?q={q}&hl=en-US&gl=US&ceid=US:en"
+
+
+BOS_KALIP = re.compile(
+    r"(©|copyright|tüm hakları|all rights reserved|abone ol|subscribe|newsletter|çerez|cookie|"
+    r"reklam|advertisement|sign up|kaydol|whatsapp|telegram kanal|takip edin|follow us)", re.I)
+
+
+def makale_metni(link: str, sinir: int = 6000) -> str:
+    """Haber sayfasından gövde metnini (<p> paragrafları) çıkarır."""
+    try:
+        s = getir(link, 20).decode("utf-8", errors="replace")
+    except Exception:
+        return ""
+    s = re.sub(r"(?is)<(script|style|noscript|figure|aside|nav|footer|header|form)[^>]*>.*?</\1>", " ", s)
+    m = re.search(r"(?is)<article[^>]*>(.*?)</article>", s)
+    govde = m.group(1) if m and len(m.group(1)) > 1500 else s
+    paragraflar, toplam = [], 0
+    for p in re.findall(r"(?is)<p[^>]*>(.*?)</p>", govde):
+        t = temizle(p)
+        if len(t) < 60 or BOS_KALIP.search(t) or t in paragraflar:
+            continue
+        paragraflar.append(t)
+        toplam += len(t)
+        if toplam >= sinir:
+            break
+    return "\n".join(paragraflar)[:sinir]
 
 
 def meta_aciklama(link: str) -> str:
@@ -374,10 +407,15 @@ class Siniflandirici:
             if kat not in self.takip:     # genel bölüm (gündem vb.) -> başlığa bak
                 takipte = [k for k in self._sirala(adaylar) if k in self.takip]
                 kat = takipte[0] if takipte else kat
+            if kat not in self.takip and h.varsayilan_kat:
+                kat = h.varsayilan_kat
         else:
             sirali = self._sirala(adaylar)
             takipte = [k for k in sirali if k in self.takip]
-            kat = takipte[0] if takipte else (sirali[0] if sirali else "gundem")
+            kat = (takipte[0] if takipte else
+                   h.varsayilan_kat or (sirali[0] if sirali else "gundem"))
+        if h.yabanci and kat == "siyaset":   # yabancı basında siyaset = dünya siyaseti
+            kat = "dunya"
         h.kategori = kat
         return kat in self.takip or (h.son_dakika and "son_dakika" in self.takip)
 
@@ -395,6 +433,7 @@ class Grup:
     jeton: set[str]
     ozet_baslik: str = ""
     ozet: str = ""
+    cevrildi: bool = False
 
     @property
     def ana(self) -> Haber:
@@ -436,62 +475,92 @@ SIRALI_ONEK = re.compile(r"^\s*(son dakika|flaş|sıcak gelişme)\s*[:|!\-–—
 def ozet_kisalt(s: str, n: int) -> str:
     """İlk cümle sığıyorsa onu, sığmıyorsa kelime sınırında kesilmiş halini döner."""
     s = s.strip()
-    # "12. hafta" gibi sayılarda bölmemek için noktadan önce harf, sonra büyük harf aranır
     ilk = re.split(r"(?<=[^\W\d][.!?])\s+(?=[A-ZÇĞİÖŞÜ\"“'])", s)[0]
-    return ilk if 30 <= len(ilk) <= n else kisalt(s, n - 1)   # "…" dahil n karakter
+    return ilk if 30 <= len(ilk) <= n else kisalt(s, n - 1)
 
 
-def basit_ozet(g: Grup, n: int = 100):
-    h = g.ana
-    g.ozet_baslik = SIRALI_ONEK.sub("", h.baslik) or h.baslik
-    spot = next((x.ozet for x in g.haberler if x.ozet and x.ozet != x.baslik), "")
-    g.ozet = ozet_kisalt(spot, n) if spot else ""
+def ilk_kelimeler(s: str, n: int) -> str:
+    """Metnin ilk n kelimesini, mümkünse cümle sonunda bitirerek döner."""
+    kelimeler = s.split()
+    if len(kelimeler) <= n:
+        return s.strip()
+    kes = " ".join(kelimeler[:n])
+    son = max(kes.rfind(". "), kes.rfind("! "), kes.rfind("? "), kes.rfind(".\n"))
+    return kes[:son + 1] if son > len(kes) * 0.6 else kes + "…"
 
 
-def claude_ozetle(gruplar: list[Grup], model: str, anahtar: str, n: int = 100) -> int:
-    """Grupları 15'erli paketler halinde Claude'a özetletir. Başarılı grup sayısını döner."""
-    basarili = 0
-    for i in range(0, len(gruplar), 15):
-        paket = gruplar[i:i + 15]
-        girdi = [{
-            "id": k,
-            "haberler": [{"kaynak": h.kaynak, "baslik": h.baslik, "spot": kisalt(h.ozet, 700)}
-                         for h in g.haberler],
-        } for k, g in enumerate(paket)]
-        istem = (
-            "Aşağıda Türk haber sitelerinden gelen haber grupları var. Her grup aynı olayı "
-            "anlatan bir veya birkaç haberden oluşuyor. Her grup için Türkçe:\n"
-            "- ozet_baslik: en fazla 12 kelime, tarafsız, bilgilendirici; tıklama tuzağı, "
-            "büyük harf ve 'SON DAKİKA' gibi ekler olmadan.\n"
-            f"- ozet: tek cümle, EN FAZLA {n} karakter; yalnızca verilen başlık ve spotlardaki "
-            "bilgilere dayan, başlığı tekrarlama, yorum veya tahmin ekleme.\n"
-            "Yalnızca JSON dizisi döndür, başka hiçbir şey yazma: "
-            '[{"id": 0, "ozet_baslik": "...", "ozet": "..."}]\n\n'
-            + json.dumps(girdi, ensure_ascii=False)
-        )
-        govde = json.dumps({
-            "model": model,
-            "max_tokens": 4000,
-            "messages": [{"role": "user", "content": istem}],
-        }).encode()
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages", data=govde, method="POST",
-            headers={"x-api-key": anahtar, "anthropic-version": "2023-06-01",
-                     "content-type": "application/json"})
+def claude_istek(istem: str, model: str, anahtar: str, max_tokens: int = 1500) -> str:
+    govde = json.dumps({"model": model, "max_tokens": max_tokens,
+                        "messages": [{"role": "user", "content": istem}]}).encode()
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages", data=govde, method="POST",
+        headers={"x-api-key": anahtar, "anthropic-version": "2023-06-01",
+                 "content-type": "application/json"})
+    for deneme in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=90) as r:
+            with urllib.request.urlopen(req, timeout=120) as r:
                 yanit = json.loads(r.read())
-            metin = "".join(b.get("text", "") for b in yanit.get("content", []))
-            m = re.search(r"\[.*\]", metin, re.S)
-            for o in json.loads(m.group(0)) if m else []:
-                k = o.get("id")
-                if isinstance(k, int) and 0 <= k < len(paket) and o.get("ozet_baslik"):
-                    paket[k].ozet_baslik = o["ozet_baslik"].strip()
-                    paket[k].ozet = ozet_kisalt(o.get("ozet") or "", n)
-                    basarili += 1
-        except Exception as e:
-            log(f"[claude] özetleme hatası, yedek yöntem kullanılacak: {e}")
-    return basarili
+            return "".join(b.get("text", "") for b in yanit.get("content", []))
+        except urllib.error.HTTPError as err:
+            if err.code in (429, 529, 500, 503) and deneme < 2:
+                time.sleep(5 * (deneme + 1))
+                continue
+            raise
+    return ""
+
+
+def grup_ozetle(g: Grup, ayar: dict, api: str | None) -> bool:
+    """Grubun özet başlığını ve 200-300 kelimelik özetini hazırlar. Claude kullandıysa True."""
+    alt, ust = int(ayar.get("ozet_kelime_min", 200)), int(ayar.get("ozet_kelime_max", 300))
+    h = g.ana
+    metin = ""
+    for x in g.haberler:                       # önce ilk yayımlayanın tam metni
+        if not x.dolayli:
+            metin = makale_metni(x.link, int(ayar.get("makale_metni_max", 6000)))
+            if len(metin) > 400:
+                break
+    spotlar = [x.ozet for x in g.haberler if x.ozet and x.ozet != x.baslik]
+    g.ozet_baslik = SIRALI_ONEK.sub("", h.baslik) or h.baslik
+    if api:
+        istem = (
+            "Aşağıdaki haberi Türkçe olarak özetle. Kaynak metin başka bir dildeyse Türkçeye çevir.\n"
+            f"- baslik: en fazla 12 kelimelik, tarafsız, bilgilendirici Türkçe başlık "
+            "(tıklama tuzağı ve 'SON DAKİKA' gibi ekler olmadan).\n"
+            f"- ozet: {alt}-{ust} kelime, akıcı Türkçe; kim, ne, nerede, ne zaman, neden sorularını "
+            "yanıtla, rakamları ve önemli alıntıları koru. YALNIZCA verilen metindeki bilgilere dayan; "
+            "yorum, tahmin veya metinde olmayan bilgi ekleme. Metin kısaysa daha kısa yaz, uydurma.\n"
+            'Yalnızca şu JSON\'u döndür: {"baslik": "...", "ozet": "..."}\n\n'
+            f"KAYNAK: {h.kaynak}\nBAŞLIK: {h.baslik}\n"
+            f"SPOT: {' / '.join(spotlar)[:1000]}\nMETİN:\n{metin or '(tam metne ulaşılamadı)'}"
+        )
+        try:
+            yanit = claude_istek(istem, ayar.get("claude_model", "claude-haiku-5-5"), api)
+            m = re.search(r"\{.*\}", yanit, re.S)
+            o = json.loads(m.group(0)) if m else {}
+            if o.get("ozet"):
+                g.ozet_baslik = (o.get("baslik") or g.ozet_baslik).strip()
+                g.ozet = o["ozet"].strip()
+                return True
+        except Exception as ex:
+            log(f"[claude] {h.kaynak}: {type(ex).__name__}: {ex}"[:300])
+    kaynak_metin = metin or (spotlar[0] if spotlar else "")
+    g.ozet = ilk_kelimeler(kaynak_metin, (alt + ust) // 2) if kaynak_metin else ""
+    return False
+
+
+def basliklari_cevir(basliklar: list[str], ayar: dict, api: str) -> list[str]:
+    """Yabancı başlıkları tek istekte Türkçeye çevirir; hata olursa aynen döner."""
+    istem = ("Aşağıdaki haber başlıklarını Türkçeye çevir. Aynı sırayla, yalnızca JSON dizi "
+             "olarak döndür: [\"...\", ...]\n\n" + json.dumps(basliklar, ensure_ascii=False))
+    try:
+        yanit = claude_istek(istem, ayar.get("claude_model", "claude-haiku-5-5"), api, 3000)
+        m = re.search(r"\[.*\]", yanit, re.S)
+        cev = json.loads(m.group(0)) if m else []
+        if len(cev) == len(basliklar):
+            return [str(x) for x in cev]
+    except Exception as ex:
+        log(f"[claude] başlık çevirisi: {ex}")
+    return basliklar
 
 
 # --------------------------------------------------------------------------- #
@@ -506,7 +575,8 @@ def mesaj_olustur(g: Grup, etiket: str) -> str:
     satirlar = [f"<b>{e(g.ozet_baslik)}</b>"]
     if g.ozet:
         satirlar.append(e(g.ozet))
-    satirlar.append(f'📰 Kaynak: <a href="{html.escape(h.link, quote=True)}">{e(h.kaynak)}</a>')
+    not_ = " <i>(Türkçeye çevrildi)</i>" if h.yabanci and g.cevrildi else ""
+    satirlar.append(f'📰 Kaynak: <a href="{html.escape(h.link, quote=True)}">{e(h.kaynak)}</a>{not_}')
     zaman = (h.tarih or g.tarih).astimezone(TR).strftime("%H:%M")
     satirlar.append(f"🕒 {zaman}")
     etiketler = [f"#{etiket.replace(' ', '')}"]
@@ -632,6 +702,8 @@ def rapor_metni(sonuclar: dict, aktif: list[dict]) -> str:
 
 def calistir(kuru: bool = False, rapor: bool = False) -> int:
     ayar = tomllib.loads(AYAR_DOSYASI.read_text("utf-8"))
+    if KAYNAK_DOSYASI.exists():
+        ayar["kaynak"] = tomllib.loads(KAYNAK_DOSYASI.read_text("utf-8"))["kaynak"]
     g = ayar["genel"]
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID")
@@ -670,6 +742,11 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
         if akis:
             if kd.get("hata", 0) >= HATA_UYARI_ESIGI:
                 tg.gonder(f"✅ {e(k['ad'])} yeniden çalışıyor.", False)
+            yeni_kaynak = "son_basari" not in kd
+            for h in haberler:
+                h.yabanci = k.get("dil", "tr") != "tr"
+                h.varsayilan_kat = k.get("kategori", "")
+                h.yeni_kaynak = yeni_kaynak
             kd.update(akis=akis, hata=0, son_basari=simdi.isoformat(timespec="minutes"))
             tum += haberler
         else:
@@ -682,15 +759,17 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
     if rapor:
         tg.gonder(rapor_metni(sonuclar, aktif), False)
 
-    # 2) Hangi 15 dakikalık aralık(lar) işlenecek?
-    E = ceyrek_taban(simdi)                      # son tamamlanmış aralığın bitişi
+    # 2) Hangi aralık(lar) işlenecek? (varsayılan 30 dk)
+    ARALIK = timedelta(minutes=int(g.get("aralik_dk", 30)))
+    E = pencere_taban(simdi, int(g.get("aralik_dk", 30)))   # son tamamlanmış aralığın bitişi
     son_isaret = durum.get("son_pencere")
     taze = not son_isaret
     if taze:
         baslangic = E - ARALIK
     else:
-        geriye = E - ARALIK * int(g.get("max_geriye_aralik", 4))
-        baslangic = max(datetime.fromisoformat(son_isaret), geriye)
+        geriye = E - ARALIK * int(g.get("max_geriye_aralik", 2))
+        baslangic = max(pencere_taban(datetime.fromisoformat(son_isaret),
+                                      int(g.get("aralik_dk", 30))), geriye)
     if baslangic >= E:
         log(f"[bitti] {E.astimezone(TR):%H:%M} aralığı zaten işlenmiş")
         return kaydet_ve_cik(durum, simdi, kuru)
@@ -717,6 +796,8 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
             ertelenen += 1
             continue
         gorulen[anahtar] = simdi.timestamp()
+        if h.yeni_kaynak and h.tarih < baslangic:   # yeni eklenen kaynağın eski haberleri
+            continue
         if h.tarih >= baslangic:
             for bas, son, liste in pencereler:
                 if bas <= h.tarih < son:
@@ -730,17 +811,20 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
     # 4) Her aralık için: sınıfla, birleştir, özetle, gönder
     sinif = Siniflandirici(ayar)
     esik = g.get("benzerlik_esigi", 0.5)
-    n_ozet = int(g.get("ozet_max_karakter", 100))
     api = os.environ.get("ANTHROPIC_API_KEY") if g.get("claude_kullan", True) else None
+    bugun = simdi.astimezone(TR).strftime("%Y-%m-%d")
+    sayac = durum.setdefault("claude_sayac", {})
+    if sayac.get("gun") != bugun:
+        sayac.update(gun=bugun, adet=0)
+    gunluk_limit = int(g.get("claude_gunluk_limit", 800))
     bekle = 0 if kuru else g.get("mesaj_arasi_sn", 1.5)
     for bas, son, liste in pencereler:
         secilen = [h for h in liste if sinif.sinifla(h)]
         gruplar = grupla(secilen, esik)
         onceki = [set(x["j"]) for x in durum.get("gonderilen", [])]
         gruplar = [gr for gr in gruplar if not any(benzerlik(gr.jeton, o) >= esik for o in onceki)]
-        gruplar.sort(key=lambda gr: gr.tarih)
         log(f"[{bas.astimezone(TR):%H:%M}-{son.astimezone(TR):%H:%M}] {len(liste)} yeni, "
-            f"{len(secilen)} takip edilen, {len(gruplar)} mesaj")
+            f"{len(secilen)} takip edilen, {len(gruplar)} haber grubu")
         if not gruplar and not g.get("bos_araligi_bildir", False):
             continue
         tg.gonder(baslik_mesaji(bas, son), False)
@@ -748,23 +832,42 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
         if not gruplar:
             tg.gonder("<i>Bu aralıkta takip edilen konularda yeni haber yok.</i>", False)
             continue
-        tekli, fazla = gruplar[: g["max_mesaj"]], gruplar[g["max_mesaj"]:]
-        for gr in tekli:
-            basit_ozet(gr, n_ozet)
-            if not gr.ozet and not gr.ana.dolayli:
-                gr.ana.ozet = meta_aciklama(gr.ana.link)
-                basit_ozet(gr, n_ozet)
-        if api:
-            k = claude_ozetle(tekli, g.get("claude_model", "claude-haiku-5-5"), api, n_ozet)
-            log(f"[claude] {k}/{len(tekli)} grup Claude ile özetlendi")
+        # Önem sırası: son dakika > çok kaynakta çıkan > yerli > erken yayımlanan
+        onem = sorted(gruplar, key=lambda gr: (not gr.son_dakika, -len(gr.haberler),
+                                               gr.ana.yabanci, gr.tarih))
+        n1, n2 = g["max_mesaj"], g["max_mesaj"] + int(g.get("max_liste", 40))
+        tekli, fazla = onem[:n1], onem[n1:n2]
+        if len(onem) > n2:
+            log(f"[sınır] {len(onem) - n2} düşük öncelikli haber gönderilmedi")
+        tekli.sort(key=lambda gr: gr.tarih)
+        fazla.sort(key=lambda gr: gr.tarih)
+
+        def hazirla(gr: Grup):
+            kullan = api if api and sayac["adet"] < gunluk_limit else None
+            if kullan:
+                sayac["adet"] += 1
+            gr.cevrildi = grup_ozetle(gr, g, kullan)
+
+        with ThreadPoolExecutor(max_workers=6) as havuz:
+            list(havuz.map(hazirla, tekli))
+        log(f"[özet] {sum(gr.cevrildi for gr in tekli)}/{len(tekli)} haber Claude ile özetlendi "
+            f"(bugün toplam {sayac['adet']}/{gunluk_limit})")
+
         for gr in tekli:
             etiket = sinif.etiket.get(gr.ana.kategori, gr.ana.kategori)
             tg.gonder(mesaj_olustur(gr, etiket))
             durum.setdefault("gonderilen", []).append({"t": simdi.timestamp(), "j": sorted(gr.jeton)})
             time.sleep(bekle)
         if fazla:
-            satirlar = [f'• <a href="{html.escape(gr.ana.link, quote=True)}">{e(gr.ana.baslik)}</a> '
-                        f"<i>({e(gr.ana.kaynak)}, {gr.tarih.astimezone(TR):%H:%M})</i>" for gr in fazla]
+            basliklar = [gr.ana.baslik for gr in fazla]
+            yab = [i for i, gr in enumerate(fazla) if gr.ana.yabanci]
+            if api and yab:
+                cev = basliklari_cevir([basliklar[i] for i in yab], g, api)
+                for i, t in zip(yab, cev):
+                    basliklar[i] = t
+            satirlar = [f'• <a href="{html.escape(gr.ana.link, quote=True)}">{e(b)}</a> '
+                        f"<i>({e(gr.ana.kaynak)}, {gr.tarih.astimezone(TR):%H:%M})</i>"
+                        for gr, b in zip(fazla, basliklar)]
             for m in parcala(satirlar, f"🗂 <b>Diğer haberler</b> ({len(fazla)})"):
                 tg.gonder(m, False)
                 time.sleep(bekle)
@@ -775,8 +878,9 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
     return kaydet_ve_cik(durum, simdi, kuru)
 
 
-def ceyrek_taban(t: datetime) -> datetime:
-    return t.replace(minute=t.minute - t.minute % 15, second=0, microsecond=0)
+def pencere_taban(t: datetime, dk: int = 30) -> datetime:
+    """Zamanı aralık başına yuvarlar (dk, 60'ı tam bölmeli: 15, 20, 30, 60)."""
+    return t.replace(minute=t.minute - t.minute % dk, second=0, microsecond=0)
 
 
 def kaydet_ve_cik(durum: dict, simdi: datetime, kuru: bool) -> int:
