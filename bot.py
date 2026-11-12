@@ -545,7 +545,82 @@ def grup_ozetle(g: Grup, ayar: dict, api: str | None) -> bool:
             log(f"[claude] {h.kaynak}: {type(ex).__name__}: {ex}"[:300])
     kaynak_metin = metin or (spotlar[0] if spotlar else "")
     g.ozet = ilk_kelimeler(kaynak_metin, (alt + ust) // 2) if kaynak_metin else ""
+    if h.yabanci and ayar.get("ceviri", "ucretsiz") == "ucretsiz":
+        baslik = ucretsiz_cevir(g.ozet_baslik)
+        ozet = ucretsiz_cevir(g.ozet) if g.ozet else ""
+        if baslik and ozet is not None:
+            g.ozet_baslik, g.ozet = baslik, ozet
+            return True
+        log(f"[çeviri] {h.kaynak}: ücretsiz çeviri başarısız, orijinal dilde gönderiliyor")
     return False
+
+
+# --------------------------------------------------------------------------- #
+#  Ücretsiz çeviri: Google Translate web uç noktası (anahtar gerekmez),
+#  yedek olarak MyMemory. Ayar: ceviri = "ucretsiz" | "kapali"
+# --------------------------------------------------------------------------- #
+def _parcalara_bol(s: str, n: int = 1800) -> list[str]:
+    parcalar, cur = [], ""
+    for p in s.split("\n"):
+        while len(p) > n:                       # çok uzun paragrafı cümle sınırından böl
+            kes = p[:n].rfind(". ")
+            kes = kes + 1 if kes > n * 0.5 else n
+            if cur:
+                parcalar.append(cur)
+                cur = ""
+            parcalar.append(p[:kes])
+            p = p[kes:].lstrip()
+        if cur and len(cur) + len(p) + 1 > n:
+            parcalar.append(cur)
+            cur = p
+        else:
+            cur = f"{cur}\n{p}" if cur else p
+    if cur:
+        parcalar.append(cur)
+    return parcalar
+
+
+def ucretsiz_cevir(metin: str, hedef: str = "tr") -> str | None:
+    """Metni ücretsiz servislerle Türkçeye çevirir; başarısız olursa None döner."""
+    if not metin or not metin.strip():
+        return metin
+    sonuc = []
+    for parca in _parcalara_bol(metin):
+        ceviri = None
+        url = ("https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto"
+               f"&tl={hedef}&dt=t&q=" + urllib.parse.quote(parca))
+        for deneme in range(3):
+            try:
+                veri = json.loads(getir(url, 20).decode("utf-8"))
+                ceviri = "".join(p[0] for p in veri[0] if p and p[0])
+                break
+            except urllib.error.HTTPError as err:
+                if err.code == 429:
+                    time.sleep(3 * (deneme + 1))
+                    continue
+                break
+            except Exception:
+                time.sleep(1)
+        if ceviri is None and len(parca) <= 480:   # yedek: MyMemory (kısa metinler)
+            try:
+                u = (f"https://api.mymemory.translated.net/get?langpair=en|{hedef}&q="
+                     + urllib.parse.quote(parca))
+                ceviri = json.loads(getir(u, 20))["responseData"]["translatedText"]
+            except Exception:
+                pass
+        if ceviri is None:
+            return None
+        sonuc.append(ceviri)
+    return "\n".join(sonuc)
+
+
+def ucretsiz_basliklar(basliklar: list[str]) -> list[str]:
+    t = ucretsiz_cevir("\n".join(basliklar))
+    if t:
+        satirlar = [x.strip() for x in t.split("\n") if x.strip()]
+        if len(satirlar) == len(basliklar):
+            return satirlar
+    return basliklar
 
 
 def basliklari_cevir(basliklar: list[str], ayar: dict, api: str) -> list[str]:
@@ -850,8 +925,9 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
 
         with ThreadPoolExecutor(max_workers=6) as havuz:
             list(havuz.map(hazirla, tekli))
-        log(f"[özet] {sum(gr.cevrildi for gr in tekli)}/{len(tekli)} haber Claude ile özetlendi "
-            f"(bugün toplam {sayac['adet']}/{gunluk_limit})")
+        log(f"[özet] {len(tekli)} haber hazırlandı; Claude {'açık' if api else 'kapalı'}, "
+            f"{sum(gr.cevrildi for gr in tekli)} haber özetlendi/çevrildi "
+            f"(bugün Claude: {sayac['adet']}/{gunluk_limit})")
 
         for gr in tekli:
             etiket = sinif.etiket.get(gr.ana.kategori, gr.ana.kategori)
@@ -861,8 +937,9 @@ def calistir(kuru: bool = False, rapor: bool = False) -> int:
         if fazla:
             basliklar = [gr.ana.baslik for gr in fazla]
             yab = [i for i, gr in enumerate(fazla) if gr.ana.yabanci]
-            if api and yab:
-                cev = basliklari_cevir([basliklar[i] for i in yab], g, api)
+            if yab and (api or g.get("ceviri", "ucretsiz") == "ucretsiz"):
+                ham = [basliklar[i] for i in yab]
+                cev = basliklari_cevir(ham, g, api) if api else ucretsiz_basliklar(ham)
                 for i, t in zip(yab, cev):
                     basliklar[i] = t
             satirlar = [f'• <a href="{html.escape(gr.ana.link, quote=True)}">{e(b)}</a> '
