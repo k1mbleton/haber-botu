@@ -9,8 +9,22 @@
 # Örn. medya haberlerini de istersen listeye "medya" ekle.
 takip_edilen = ["son_dakika", "siyaset", "ekonomi", "borsa", "spor"]
 
-# Yayın saatinden bu kadar dakikadan eski haberler gönderilmez
-# (GitHub gecikmelerinde haber kaçmasın diye 15 dk'dan uzun tutuldu).
+# Bot her çalıştığında tamamlanmış son 15 dakikalık aralığı işler
+# (ör. 13:32'de çalışırsa 13:15-13:30 arasında yayımlanan haberler) ve
+# her aralığın başına "13:15 – 13:30 Ana Haberleri" başlık mesajı atar.
+
+# Özetin en fazla kaç karakter olacağı
+ozet_max_karakter = 100
+
+# Takip edilen konularda haber çıkmayan aralıklar için de başlık atılsın mı?
+# (false: gece gibi sakin saatlerde boş başlık mesajı gelmez)
+bos_araligi_bildir = false
+
+# GitHub bir turu atlarsa en fazla kaç aralık geriye dönülsün (4 = 1 saat)
+max_geriye_aralik = 4
+
+# Yayına geç düşen haberler (özellikle Google Haberler üzerinden gelenler)
+# kendi aralığı geçmiş olsa bile bu süreye kadar bir sonraki aralıkta gönderilir.
 max_haber_yasi_dk = 120
 
 # Bir turda en fazla kaç ayrı mesaj gönderilsin? Fazlası tek bir
@@ -204,7 +218,8 @@ aktif = true
 [[kaynak]]
 ad = "KRT TV"
 url = "https://www.krttv.com.tr"
-aktif = true
+aktif = false
+not = "GitHub sunucularından erişimi engelliyor, Google Haberler'de de çıkmıyor (12.11.2026)"
 
 [[kaynak]]
 ad = "Borsamatik"
@@ -279,7 +294,8 @@ aktif = true
 [[kaynak]]
 ad = "Medyaradar"
 url = "https://www.medyaradar.com"
-aktif = true
+aktif = false
+not = "GitHub sunucularından erişimi engelliyor, Google Haberler'de de çıkmıyor (12.11.2026)"
 
 [[kaynak]]
 ad = "Medyafaresi"
