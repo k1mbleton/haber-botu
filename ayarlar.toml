@@ -1,62 +1,71 @@
 # ============================================================
 #  HABER BOTU AYARLARI
 #  Bu dosyayı GitHub'da düzenleyip kaydetmeniz yeterli;
-#  bir sonraki çalışmada (en geç 15 dk) geçerli olur.
+#  bir sonraki çalışmada (en geç 30 dk) geçerli olur.
 # ============================================================
 
 [genel]
-# Hangi kategoriler Telegram'a gönderilsin? (aşağıdaki [kategori.*] adlarından)
-# Örn. medya haberlerini de istersen listeye "medya" ekle.
-takip_edilen = ["son_dakika", "siyaset", "ekonomi", "borsa", "spor"]
+# Hangi konular Telegram'a gönderilsin? (aşağıdaki [kategori.*] adlarından)
+takip_edilen = [
+  "son_dakika", "siyaset", "dunya", "ekonomi", "borsa", "sirketler",
+  "teknoloji", "spor", "magazin",
+]
 
-# Bot her çalıştığında tamamlanmış son 15 dakikalık aralığı işler
-# (ör. 13:32'de çalışırsa 13:15-13:30 arasında yayımlanan haberler) ve
-# her aralığın başına "13:15 – 13:30 Ana Haberleri" başlık mesajı atar.
+# Aralık uzunluğu (dakika). Bot her çalıştığında tamamlanmış son aralığı işler
+# (ör. 14:02'de çalışırsa 13:30-14:00 arasında yayımlanan haberler) ve her aralığın
+# başına "13:30 – 14:00 Ana Haberleri" başlık mesajı atar.
+# Değiştirirsen .github/workflows/haber-botu.yml içindeki cron satırını da uydur.
+aralik_dk = 30
 
-# Özetin en fazla kaç karakter olacağı
-ozet_max_karakter = 100
+# Özet uzunluğu (kelime). Claude API anahtarı varsa haberin tam metninden bu
+# uzunlukta Türkçe özet yazılır, yabancı haberler Türkçeye çevrilir.
+# Anahtar yoksa haber metninin ilk ~250 kelimesi gönderilir (çeviri yapılmaz).
+ozet_kelime_min = 200
+ozet_kelime_max = 300
+makale_metni_max = 6000
 
 # Takip edilen konularda haber çıkmayan aralıklar için de başlık atılsın mı?
-# (false: gece gibi sakin saatlerde boş başlık mesajı gelmez)
 bos_araligi_bildir = false
 
-# GitHub bir turu atlarsa en fazla kaç aralık geriye dönülsün (4 = 1 saat)
-max_geriye_aralik = 4
+# GitHub bir turu atlarsa en fazla kaç aralık geriye dönülsün (2 = 1 saat)
+max_geriye_aralik = 2
 
 # Yayına geç düşen haberler (özellikle Google Haberler üzerinden gelenler)
 # kendi aralığı geçmiş olsa bile bu süreye kadar bir sonraki aralıkta gönderilir.
 max_haber_yasi_dk = 120
 
-# Bir turda en fazla kaç ayrı mesaj gönderilsin? Fazlası tek bir
-# "Diğer haberler" listesinde toplanır (Telegram'ı boğmamak için).
+# Bir aralıkta en fazla kaç haber ayrı mesaj (uzun özetli) olarak gönderilsin?
+# Öncelik: son dakika > birden çok sitede çıkan > yerli > erken yayımlanan.
+# Fazlası tek bir "Diğer haberler" listesinde başlık + link olarak gelir.
 max_mesaj = 30
+# "Diğer haberler" listesine en fazla kaç başlık girsin (gerisi gönderilmez)
+max_liste = 40
 
-# Mesajlar arası bekleme (sn). Özel mesaj için 1.5 yeterli,
-# grup/kanal kullanırsan 3 yap (Telegram hız sınırı).
+# Mesajlar arası bekleme (sn). Özel mesaj için 1.5 yeterli, grup/kanal için 3.
 mesaj_arasi_sn = 1.5
 
 # Aynı olayı farklı sitelerden tek mesajda birleştirme hassasiyeti (0-1).
-# Yükseltirsen daha az birleştirir.
 benzerlik_esigi = 0.5
 
 link_onizleme = true
 
-# ANTHROPIC_API_KEY tanımlıysa özet başlık + özet Claude ile yazılır.
-# Tanımlı değilse sitenin kendi başlığı ve spot metni kullanılır (ücretsiz).
+# Claude ile özet/çeviri (GitHub'da ANTHROPIC_API_KEY gizli değişkeni gerekir)
 claude_kullan = true
 claude_model = "claude-haiku-5-5"
+# Maliyet sigortası: günde en fazla kaç haber Claude ile özetlensin
+claude_gunluk_limit = 800
 
-# Linkin ilk iki parçasında bunlar geçen haberler tamamen atlanır.
+# Linkin ilk iki bölümünde bunlar geçen haberler tamamen atlanır.
 haric_url = [
-  "magazin", "foto-galeri", "video-galeri", "galeri", "video", "videolar",
-  "yazarlar", "yazar", "kose-yazilari", "astroloji", "burclar", "saglik",
-  "yasam", "kadin", "kultur-sanat", "yemek", "seyahat", "otomobil",
-  "ilan", "resmi-ilanlar", "yerel", "advertorial", "hava-durumu",
+  "foto-galeri", "video-galeri", "galeri", "video", "videolar", "videos", "av",
+  "yazarlar", "yazar", "kose-yazilari", "opinion", "commentisfree", "podcasts",
+  "live", "in-pictures", "gallery", "newsletters", "astroloji", "burclar",
+  "saglik", "yasam", "kadin", "yemek", "seyahat", "otomobil", "ilan",
+  "resmi-ilanlar", "yerel", "advertorial", "hava-durumu",
 ]
 
-# Kategoriler önemli -> önemsiz sırasıyla; bir haber birden fazlasına
-# uyarsa listede önce geleni alır.
-oncelik = ["borsa", "ekonomi", "siyaset", "spor", "dunya", "medya", "gundem"]
+# Bir haber birden fazla konuya uyarsa listede önce gelen seçilir.
+oncelik = ["borsa", "sirketler", "ekonomi", "teknoloji", "dunya", "siyaset", "spor", "magazin", "medya", "gundem"]
 
 
 # ------------------------------------------------------------
@@ -64,30 +73,45 @@ oncelik = ["borsa", "ekonomi", "siyaset", "spor", "dunya", "medya", "gundem"]
 #  url   : linkteki bölüm adı (ör. https://site.com/spor/... -> "spor")
 #  kelime: başlıkta aranır. Sonunda * olan kelime ek alabilir
 #          (bakan* -> bakanı, bakanlık). * yoksa tam kelime aranır.
+#  Hiçbiri uymazsa kaynağın kendi "kategori" değeri kullanılır.
 # ------------------------------------------------------------
 
 [kategori.son_dakika]
 etiket = "Son Dakika"
-url = ["son-dakika", "sondakika", "son-dakika-haberleri", "flas-haber"]
-kelime = ["son dakika", "flaş", "flaş gelişme*", "sıcak gelişme*"]
+url = ["son-dakika", "sondakika", "son-dakika-haberleri", "flas-haber", "breaking-news"]
+kelime = ["son dakika", "flaş", "flaş gelişme*", "sıcak gelişme*", "breaking"]
 
 [kategori.siyaset]
 etiket = "Siyaset"
-url = ["politika", "siyaset", "meclis", "secim"]
+url = ["politika", "siyaset", "meclis", "secim", "politics"]
 kelime = [
   "tbmm", "meclis*", "chp*", "ak parti*", "akp*", "mhp*", "dem parti*",
   "iyi parti*", "yeniden refah*", "zafer partisi*", "cumhurbaşkan*",
   "erdoğan*", "özgür özel*", "bahçeli*", "imamoğlu*", "mansur yavaş*",
   "bakan*", "milletvekil*", "seçim*", "kabine*", "anayasa*", "muhalefet*",
-  "iktidar*", "kurultay*", "genel başkan*", "siyas*", "dışişleri*", "ysk",
+  "iktidar*", "kurultay*", "genel başkan*", "siyas*", "ysk",
+]
+
+[kategori.dunya]
+etiket = "Dünya Siyaseti"
+url = [
+  "dunya", "dunyadan", "world", "international", "middle-east", "europe",
+  "us-news", "asia", "africa", "americas", "us", "uk-news",
+]
+kelime = [
+  "abd", "rusya*", "ukrayna*", "nato", "israil*", "gazze*", "iran*", "çin*",
+  "avrupa birliği*", "ab'", "bm", "birleşmiş milletler*", "putin*", "trump*",
+  "beyaz saray*", "kremlin*", "dışişleri*", "zelenski*", "netanyahu*",
+  "ukraine", "russia*", "gaza", "israel*", "china", "white house", "united nations",
+  "european union", "kremlin", "nato",
 ]
 
 [kategori.ekonomi]
-etiket = "Ekonomi"
+etiket = "Finans"
 url = [
   "ekonomi", "finans", "para", "piyasa", "piyasalar", "doviz", "altin",
-  "kripto", "kripto-para", "sirketler", "is-dunyasi", "enerji", "emlak",
-  "bankacilik", "ekonomi-haberleri",
+  "kripto", "kripto-para", "enerji", "emlak", "bankacilik", "ekonomi-haberleri",
+  "business", "economy", "finance", "money", "personal-finance",
 ]
 kelime = [
   "ekonomi*", "enflasyon*", "faiz*", "merkez bankası*", "tcmb", "dolar*",
@@ -96,16 +120,37 @@ kelime = [
   "zammı*", "vergi*", "ihracat*", "ithalat*", "büyüme rakam*", "işsizlik*",
   "kredi*", "banka*", "akaryakıt*", "benzin*", "motorin*", "tüik", "hazine*",
   "bütçe*", "kripto*", "bitcoin*", "piyasa*", "imf", "fed", "ecb",
-  "mehmet şimşek*", "karahan*",
+  "mehmet şimşek*", "karahan*", "inflation", "interest rate*", "central bank*",
+  "economy", "tariff*", "oil price*", "gdp",
 ]
 
 [kategori.borsa]
 etiket = "Borsa"
-url = ["borsa", "bist", "borsa-istanbul", "hisse", "halka-arz"]
+url = ["borsa", "bist", "borsa-istanbul", "hisse", "halka-arz", "markets", "stocks", "investing"]
 kelime = [
   "borsa*", "bist*", "hisse", "hisseler*", "hissesi*", "hisse senedi*",
   "halka arz*", "temettü*", "endeks*", "spk", "viop", "bedelsiz sermaye*",
-  "nasdaq", "dow jones", "s&p", "kap bildirim*",
+  "nasdaq", "dow jones", "s&p", "kap bildirim*", "wall street", "stocks",
+  "stock market", "shares", "ipo",
+]
+
+[kategori.sirketler]
+etiket = "Şirketler"
+url = ["sirketler", "sirket-haberleri", "is-dunyasi", "companies", "company", "deals"]
+kelime = [
+  "şirket*", "holding*", "satın al*", "birleşme*", "bilanço*", "net kâr*",
+  "net kar*", "ciro*", "genel müdür*", "ceo", "yatırım*", "fabrika*", "ihale*",
+  "earnings", "acquisition*", "acquire*", "merger*", "layoff*", "revenue*", "profit*",
+]
+
+[kategori.teknoloji]
+etiket = "Teknoloji"
+url = ["teknoloji", "bilim-teknoloji", "tech", "technology", "gadgets", "ai", "science", "bilim"]
+kelime = [
+  "yapay zeka*", "yapay zekâ*", "teknoloji*", "apple", "iphone*", "samsung*",
+  "google", "microsoft*", "openai", "chatgpt", "android*", "yazılım*", "siber*",
+  "elon musk*", "tesla*", "5g", "nvidia*", "çip*", "uydu*", "artificial intelligence",
+  "chip*", "software", "cyber*", "smartphone*",
 ]
 
 [kategori.spor]
@@ -113,6 +158,8 @@ etiket = "Spor"
 url = [
   "spor", "futbol", "basketbol", "voleybol", "super-lig", "transfer",
   "galatasaray", "fenerbahce", "besiktas", "trabzonspor", "formula-1", "tenis",
+  "sport", "sports", "football", "soccer", "nba", "tennis", "f1", "formula1",
+  "motorsport", "golf", "boxing",
 ]
 kelime = [
   "süper lig*", "galatasaray*", "fenerbahçe*", "beşiktaş*", "trabzonspor*",
@@ -121,250 +168,29 @@ kelime = [
   "teknik direktör*", "futbol*", "basketbol*", "voleybol*", "euroleague*",
   "nba", "formula 1", "tenis*", "olimpiyat*", "maç", "maçı*", "maçta*",
   "maçın*", "maçında*", "gol", "golü*", "goller*", "hakem*", "derbi*", "tff",
+  "premier league", "champions league", "world cup", "nfl", "grand prix",
 ]
 
-[kategori.dunya]
-etiket = "Dünya"
-url = ["dunya", "dunyadan"]
-kelime = []
+[kategori.magazin]
+etiket = "Magazin"
+url = [
+  "magazin", "kelebek", "cumartesi", "entertainment", "culture", "film", "music",
+  "celebrity", "arts", "showbiz", "tv-and-radio",
+]
+kelime = [
+  "ünlü*", "şarkıcı*", "oyuncu*", "evlen*", "boşan*", "sevgili*", "magazin*",
+  "düğün*", "celebrity", "actor*", "actress*", "singer*", "oscar*", "grammy*",
+  "hollywood", "box office",
+]
 
 [kategori.medya]
 etiket = "Medya"
-url = ["medya", "televizyon", "tv"]
-kelime = ["rtük*", "reyting*", "rating*", "riak", "tiak", "televizyon*", "radyo*", "dizi*", "yayın akış*"]
+url = ["medya", "televizyon"]
+kelime = ["rtük*", "reyting*", "rating*", "riak", "tiak", "televizyon*", "radyo*", "yayın akış*"]
 
 [kategori.gundem]
 etiket = "Gündem"
-url = ["gundem", "guncel", "turkiye", "haber"]
+url = ["gundem", "guncel", "turkiye", "haber", "news"]
 kelime = []
 
-
-# ------------------------------------------------------------
-#  KAYNAKLAR  (bilgin.pro/referanslar — 12.11.2026 itibarıyla 42 logo)
-#  aktif = false olanlar taranmaz. "rss" verilmezse bot
-#  /export/rss -> /rss -> /export/newsmap sırasıyla kendisi bulur.
-# ------------------------------------------------------------
-
-[[kaynak]]
-ad = "CNBC-e"
-url = "https://www.cnbce.com"
-aktif = true
-
-[[kaynak]]
-ad = "tv100"
-url = "https://www.tv100.com"
-aktif = true
-
-[[kaynak]]
-ad = "Halk TV"
-url = "https://halktv.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Nefes"
-url = "https://www.nefes.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Oda TV"
-url = "https://www.odatv.com"
-aktif = true
-
-[[kaynak]]
-ad = "Oksijen"
-url = "https://gazeteoksijen.com"
-aktif = true
-
-[[kaynak]]
-ad = "Dünya"
-url = "https://www.dunya.com"
-aktif = true
-
-[[kaynak]]
-ad = "Haber Global"
-url = "https://www.haberglobal.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Ekonomim"
-url = "https://www.ekonomim.com"
-aktif = true
-
-[[kaynak]]
-ad = "Aydınlık"
-url = "https://www.aydinlik.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Yeniçağ"
-url = "https://www.yenicaggazetesi.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Kontra Spor"
-url = "https://www.kontraspor.com"
-aktif = true
-
-[[kaynak]]
-ad = "İnternet Haber"
-url = "https://www.internethaber.com"
-aktif = true
-
-[[kaynak]]
-ad = "F5 Haber"
-url = "https://www.f5haber.com"
-aktif = true
-
-[[kaynak]]
-ad = "KRT TV"
-url = "https://www.krttv.com.tr"
-aktif = false
-not = "GitHub sunucularından erişimi engelliyor, Google Haberler'de de çıkmıyor (12.11.2026)"
-
-[[kaynak]]
-ad = "Borsamatik"
-url = "https://www.borsamatik.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Monay"
-url = "https://www.monay.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Gerçek Gündem"
-url = "https://www.gercekgundem.com"
-aktif = true
-
-[[kaynak]]
-ad = "HaberEt"
-url = "https://www.haberet.com"
-aktif = true
-
-[[kaynak]]
-ad = "Nokta Gazetesi"
-url = "https://www.noktagazetesi.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Yeni Ankara"
-url = "https://www.yeniankara.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Artı Gerçek"
-url = "https://artigercek.com"
-aktif = true
-
-[[kaynak]]
-ad = "Ekran Haber"
-url = "https://ekranhaber.com"
-aktif = true
-
-[[kaynak]]
-ad = "Haber Ankara"
-url = "https://www.haberankara.com"
-aktif = true
-
-[[kaynak]]
-ad = "Ulusal"
-url = "https://www.ulusal.com.tr"
-aktif = true
-
-[[kaynak]]
-ad = "Süper Haber"
-url = "https://www.superhaber.com"
-aktif = true
-
-[[kaynak]]
-ad = "Para Durumu"
-url = "https://www.paradurumu.com"
-aktif = true
-
-[[kaynak]]
-ad = "Haber3"
-url = "https://www.haber3.com"
-aktif = true
-
-[[kaynak]]
-ad = "Medyatava"
-url = "https://www.medyatava.com"
-aktif = true
-
-[[kaynak]]
-ad = "Medyaradar"
-url = "https://www.medyaradar.com"
-aktif = false
-not = "GitHub sunucularından erişimi engelliyor, Google Haberler'de de çıkmıyor (12.11.2026)"
-
-[[kaynak]]
-ad = "Medyafaresi"
-url = "https://www.medyafaresi.com"
-aktif = true
-
-[[kaynak]]
-ad = "Gazeteoku"
-url = "https://www.gazeteoku.com"
-aktif = true
-
-[[kaynak]]
-ad = "Haber Fokus"
-url = "https://www.haberfokus.com"
-aktif = true
-
-# ---- Varsayılan olarak kapalı olanlar (haber sitesi değil / konu dışı) ----
-
-[[kaynak]]
-ad = "Gazete Duvar"
-url = "https://www.gazeteduvar.com.tr"
-aktif = false
-not = "Mart 2025'te yayın hayatına son verdiği bildiriliyor"
-
-[[kaynak]]
-ad = "Chip"
-url = "https://www.chip.com.tr"
-aktif = false
-not = "Teknoloji dergisi"
-
-[[kaynak]]
-ad = "Teknolojioku"
-url = "https://www.teknolojioku.com"
-aktif = false
-not = "Teknoloji"
-
-[[kaynak]]
-ad = "Elele"
-url = "https://www.elele.com.tr"
-aktif = false
-not = "Kadın/yaşam dergisi"
-
-[[kaynak]]
-ad = "Show Radyo"
-url = "https://www.showradyo.com.tr"
-aktif = false
-not = "Radyo sitesi"
-
-[[kaynak]]
-ad = "Radyo Viva"
-url = "https://www.radyoviva.com.tr"
-aktif = false
-not = "Radyo sitesi"
-
-[[kaynak]]
-ad = "Sacit Aslan"
-url = "https://www.sacitaslan.com"
-aktif = false
-not = "Kişisel gazeteci sitesi"
-
-[[kaynak]]
-ad = "Basın İlan Kurumu"
-url = "https://bik.gov.tr"
-aktif = false
-not = "Kurum sitesi"
-
-[[kaynak]]
-ad = "Anadolu Ajansı"
-url = "https://www.aa.com.tr"
-rss = ["https://www.aa.com.tr/tr/rss/default?cat=guncel"]
-aktif = false
-not = "Referans sayfasındaki logo bilgin.pro'ya gidiyor; AA'nın kendi RSS'i"
+# Haber kaynakları kaynaklar.toml dosyasındadır.
