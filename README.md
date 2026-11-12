@@ -1,28 +1,30 @@
 # Telegram Haber Botu
 
-bilgin.pro altyapısındaki haber sitelerini **15 dakikada bir** tarar, takip ettiğin kategorilerdeki (son dakika, siyaset, ekonomi, borsa, spor) yeni haberleri Telegram'a şu biçimde gönderir (temsili örnek):
+90 yerli ve yabancı haber kaynağını **30 dakikada bir** tarar (her yarım saatin ~2 dk sonrasında). O 30 dakikalık aralıkta yayımlanan; son dakika, siyaset, dünya siyaseti, finans, borsa, şirketler, teknoloji, spor ve magazin haberlerini Telegram'a gönderir (temsili örnek):
 
 ```
-🔴 SON DAKİKA
-Merkez Bankası politika faizini yüzde 38'de sabit tuttu
+🗞 13:30 – 14:00 Ana Haberleri
 
-Kurul, enflasyondaki düşüş eğiliminin sürdüğünü belirterek
-faizi değiştirmedi. Bir sonraki toplantı Aralık'ta.
-
-📰 Kaynak: Dünya · Ekonomim · CNBC-e
-🏷 #Ekonomi  🕒 14:02
+Merkez Bankası faizi sabit tuttu
+(200-300 kelimelik Türkçe özet)
+📰 Kaynak: Dünya
+🕒 13:42
+#Finans
 ```
+
+Aynı haberi birden fazla site verdiyse tek mesaj gönderilir ve **haberi ilk yayımlayan site** kaynak gösterilir. Yabancı kaynakların haberleri Türkçeye çevrilir.
 
 Bot GitHub'ın sunucularında çalışır, **bilgisayarının açık olması gerekmez** ve ücretsizdir.
 
 ## Neler yapıyor?
 
-- 33 aktif kaynağın RSS akışını paralel tarar (`/export/rss` → `/rss` → `/export/newsmap`; bulamazsa ana sayfadan kendisi keşfeder).
-- Kategoriyi linkteki bölümden (`/spor/...`, `/ekonomi/...`) ve başlıktaki anahtar kelimelerden belirler. Magazin, galeri, köşe yazısı ve yerel haberleri atlar.
-- **Aynı olayı farklı sitelerden tek mesajda birleştirir**, kaynakları yan yana yazar. Son 12 saatte gönderilmiş bir olayı tekrar göndermez.
-- Özet: `ANTHROPIC_API_KEY` tanımlıysa özet başlık ve 2-3 cümlelik özeti Claude yazar; değilse sitenin kendi başlığı ve spotu kullanılır.
-- Bir turda en fazla 30 tekil mesaj gönderir, fazlasını tek bir "Diğer haberler" listesinde toplar.
-- İlk çalıştırmada eski haberleri göndermez; hangi sitelerin çalıştığını raporlar. Bir site ~2 saat taranamazsa seni uyarır.
+- 90 aktif kaynağın (69 yerli, 21 yabancı) RSS akışını paralel tarar; RSS adresi verilmemişse kendisi bulur.
+- Kategoriyi linkteki bölümden (`/spor/...`, `/ekonomi/...`) ve başlıktaki anahtar kelimelerden belirler. Galeri, video, köşe yazısı ve yerel haberleri atlar.
+- Siteler GitHub sunucularını engelliyorsa haberlerini Google Haberler üzerinden alır (özet satırı olmadan gelir).
+- **Aynı olayı farklı sitelerden tek mesaja indirir**, ilk yayımlayanı kaynak gösterir. Son 12 saatte gönderilmiş bir olayı tekrar göndermez.
+- Özet: `ANTHROPIC_API_KEY` tanımlıysa bot haberin tam metnini çeker ve Claude 200-300 kelimelik Türkçe özet yazar (yabancı haberleri çevirir). Anahtar yoksa haber metninin ilk ~250 kelimesi gönderilir, çeviri yapılmaz. Günlük özet sayısı `claude_gunluk_limit` ile sınırlıdır.
+- Bir aralıkta en önemli 30 haber ayrı mesaj olarak gelir (öncelik: son dakika > birden çok sitede çıkan > yerli > erken yayımlanan); sonraki 40 haber "Diğer haberler" listesinde başlık + link olarak gelir.
+- Bir site ~2 saat taranamazsa seni uyarır. Kaynak durum raporu için Actions → Run workflow → "rapor" kutusu.
 
 ## Kurulum (yaklaşık 15 dakika)
 
@@ -36,7 +38,7 @@ Bot GitHub'ın sunucularında çalışır, **bilgisayarının açık olması ger
 ### 2. GitHub deposunu oluştur
 1. github.com'da ücretsiz hesap aç → **New repository** → ad: `haber-botu` → **Public** seç → Create.
    - Public olması GitHub Actions'ı sınırsız ücretsiz yapar. Kodun görünür ama token'ların görünmez (gizli değişken olarak saklanır).
-   - Private seçersen aylık ücretsiz dakika kotası (2.000 dk) 15 dakikalık çalışmaya yetmez.
+   - Private seçersen aylık ücretsiz dakika kotası (2.000 dk) 30 dakikalık çalışmaya yetmeyebilir.
 2. **Add file → Upload files** ile bu klasördeki her şeyi (`.github` klasörü dahil) sürükleyip bırak → Commit.
    - `.github` klasörü görünmüyorsa: Mac'te Finder'da `Cmd+Shift+.`, Windows'ta Görünüm → Gizli öğeler.
 
@@ -56,17 +58,17 @@ Bir dakika içinde Telegram'a kaynak durum raporu ve "bot kuruldu" mesajı gelir
 
 ## Ayarlar
 
-Her şey `ayarlar.toml` dosyasında; GitHub'da dosyayı açıp kalem simgesiyle düzenleyebilirsin:
+Ayarlar `ayarlar.toml`, haber kaynakları `kaynaklar.toml` dosyasında; GitHub'da dosyayı açıp kalem simgesiyle düzenleyebilirsin:
 
-- **Kategori eklemek/çıkarmak:** `takip_edilen = [...]` (ör. medya haberleri için `"medya"` ekle)
-- **Site kapatmak/açmak:** ilgili `[[kaynak]]` altında `aktif = false/true`
-- **Yeni site eklemek:** yeni bir `[[kaynak]]` bloğu ekle (ad + url yeterli)
+- **Kategori eklemek/çıkarmak:** `takip_edilen = [...]` (ör. radyo/TV sektör haberleri için `"medya"` ekle)
+- **Site kapatmak/açmak:** `kaynaklar.toml`'da ilgili satırda `aktif = false/true`
+- **Yeni site eklemek:** `kaynaklar.toml`'a bir satır ekle (ad + url yeterli; yabancıysa `dil = "en"`)
 - **Anahtar kelime:** ilgili `[kategori.*]` altındaki `kelime` listesine ekle (`bakan*` = bakanı, bakanlık… da yakalar)
-- **Mesaj sayısı:** `max_mesaj`
+- **Mesaj sayısı:** `max_mesaj`, `max_liste`; **özet uzunluğu:** `ozet_kelime_min/max`; **aralık:** `aralik_dk` (cron satırıyla birlikte)
 
 ## Bilinmesi gerekenler
 
-- GitHub zamanlanmış görevleri yoğunlukta **5-15 dk gecikebilir**; nadiren bir tur atlanabilir. Bot bunu telafi eder (son 2 saati kontrol eder, haber kaçmaz), sadece bazen 15 yerine 20-30 dk sonra gelir.
+- GitHub zamanlanmış görevleri yoğunlukta **5-15 dk gecikebilir**; nadiren bir tur atlanabilir. Bot bunu telafi eder (son 2 saati kontrol eder, haber kaçmaz), sadece bazen birkaç dakika geç gelir.
 - GitHub, 60 gün hiç değişiklik olmayan depolarda zamanlamayı durdurur. İş akışı bunu önlemek için ayda iki kez `canli.txt` dosyasını günceller.
 - GitHub'ın sunucuları yurt dışında. Bazı Türk siteleri yurt dışı trafiği engelliyorsa ilk rapordaki "Ulaşılamayan" listesinde görünür.
 - Kendi bilgisayarında denemek için: `python bot.py --kuru` (hiçbir şey göndermez, ekrana yazar).
