@@ -1,0 +1,70 @@
+name: Haber Botu
+
+on:
+  schedule:
+    # Her 15 dakikada bir (UTC). Saat başı GitHub'ın en yoğun anı olduğu için
+    # :00 yerine :07, :22, :37, :52 seçildi.
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+    inputs:
+      rapor:
+        description: "Kaynak durum raporunu Telegram'a gönder"
+        type: boolean
+        default: false
+
+concurrency:
+  group: haber-botu
+  cancel-in-progress: false
+
+permissions:
+  contents: write   # yalnızca ayda bir "canlı tutma" kaydı için
+
+jobs:
+  tara:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Önceki durumu geri yükle (gönderilen haberler listesi)
+        uses: actions/cache/restore@v4
+        with:
+          path: data/durum.json
+          key: bot-durum-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: bot-durum-
+
+      - name: Botu çalıştır
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ "${{ inputs.rapor }}" = "true" ]; then
+            python bot.py --rapor
+          else
+            python bot.py
+          fi
+
+      - name: Durumu kaydet
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/durum.json
+          key: bot-durum-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # GitHub, 60 gün hiç commit olmayan depolarda zamanlanmış görevleri durdurur.
+      # Bu adım ayın 1'inde ve 15'inde küçük bir tarih kaydı atarak depoyu canlı tutar.
+      - name: Canlı tutma
+        if: github.event_name == 'schedule'
+        run: |
+          GUN=$(date -u +%d); BUGUN=$(date -u +%F)
+          if { [ "$GUN" = "01" ] || [ "$GUN" = "15" ]; } && [ "$(cat canli.txt 2>/dev/null)" != "$BUGUN" ]; then
+            echo "$BUGUN" > canli.txt
+            git config user.name "haber-botu"
+            git config user.email "haber-botu@users.noreply.github.com"
+            git add canli.txt && git commit -m "canlı tutma $BUGUN" && git push
+          fi
