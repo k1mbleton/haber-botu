@@ -2,9 +2,9 @@ name: Haber Botu
 
 on:
   schedule:
-    # Her 15 dakikada bir (UTC). Saat başı GitHub'ın en yoğun anı olduğu için
-    # :00 yerine :07, :22, :37, :52 seçildi.
-    - cron: "7,22,37,52 * * * *"
+    # Her çeyrek saatin 2 dk sonrasında (13:02, 13:17, 13:32, 13:47 ...).
+    # 2 dk pay, sitelerin RSS akışına son haberlerin düşmesi için.
+    - cron: "2,17,32,47 * * * *"
   workflow_dispatch:
     inputs:
       rapor:
@@ -34,8 +34,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: data/durum.json
-          key: bot-durum-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: bot-durum-
+          key: bot-v2-durum-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: bot-v2-durum-
 
       - name: Botu çalıştır
         env:
@@ -54,7 +54,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: data/durum.json
-          key: bot-durum-${{ github.run_id }}-${{ github.run_attempt }}
+          key: bot-v2-durum-${{ github.run_id }}-${{ github.run_attempt }}
 
       # GitHub, 60 gün hiç commit olmayan depolarda zamanlanmış görevleri durdurur.
       # Bu adım ayın 1'inde ve 15'inde küçük bir tarih kaydı atarak depoyu canlı tutar.
