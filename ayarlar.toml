@@ -1,0 +1,354 @@
+# ============================================================
+#  HABER BOTU AYARLARI
+#  Bu dosyayı GitHub'da düzenleyip kaydetmeniz yeterli;
+#  bir sonraki çalışmada (en geç 15 dk) geçerli olur.
+# ============================================================
+
+[genel]
+# Hangi kategoriler Telegram'a gönderilsin? (aşağıdaki [kategori.*] adlarından)
+# Örn. medya haberlerini de istersen listeye "medya" ekle.
+takip_edilen = ["son_dakika", "siyaset", "ekonomi", "borsa", "spor"]
+
+# Yayın saatinden bu kadar dakikadan eski haberler gönderilmez
+# (GitHub gecikmelerinde haber kaçmasın diye 15 dk'dan uzun tutuldu).
+max_haber_yasi_dk = 120
+
+# Bir turda en fazla kaç ayrı mesaj gönderilsin? Fazlası tek bir
+# "Diğer haberler" listesinde toplanır (Telegram'ı boğmamak için).
+max_mesaj = 30
+
+# Mesajlar arası bekleme (sn). Özel mesaj için 1.5 yeterli,
+# grup/kanal kullanırsan 3 yap (Telegram hız sınırı).
+mesaj_arasi_sn = 1.5
+
+# Aynı olayı farklı sitelerden tek mesajda birleştirme hassasiyeti (0-1).
+# Yükseltirsen daha az birleştirir.
+benzerlik_esigi = 0.5
+
+link_onizleme = true
+
+# ANTHROPIC_API_KEY tanımlıysa özet başlık + özet Claude ile yazılır.
+# Tanımlı değilse sitenin kendi başlığı ve spot metni kullanılır (ücretsiz).
+claude_kullan = true
+claude_model = "claude-haiku-5-5"
+
+# Linkin ilk iki parçasında bunlar geçen haberler tamamen atlanır.
+haric_url = [
+  "magazin", "foto-galeri", "video-galeri", "galeri", "video", "videolar",
+  "yazarlar", "yazar", "kose-yazilari", "astroloji", "burclar", "saglik",
+  "yasam", "kadin", "kultur-sanat", "yemek", "seyahat", "otomobil",
+  "ilan", "resmi-ilanlar", "yerel", "advertorial", "hava-durumu",
+]
+
+# Kategoriler önemli -> önemsiz sırasıyla; bir haber birden fazlasına
+# uyarsa listede önce geleni alır.
+oncelik = ["borsa", "ekonomi", "siyaset", "spor", "dunya", "medya", "gundem"]
+
+
+# ------------------------------------------------------------
+#  KATEGORİLER
+#  url   : linkteki bölüm adı (ör. https://site.com/spor/... -> "spor")
+#  kelime: başlıkta aranır. Sonunda * olan kelime ek alabilir
+#          (bakan* -> bakanı, bakanlık). * yoksa tam kelime aranır.
+# ------------------------------------------------------------
+
+[kategori.son_dakika]
+etiket = "Son Dakika"
+url = ["son-dakika", "sondakika", "son-dakika-haberleri", "flas-haber"]
+kelime = ["son dakika", "flaş", "flaş gelişme*", "sıcak gelişme*"]
+
+[kategori.siyaset]
+etiket = "Siyaset"
+url = ["politika", "siyaset", "meclis", "secim"]
+kelime = [
+  "tbmm", "meclis*", "chp*", "ak parti*", "akp*", "mhp*", "dem parti*",
+  "iyi parti*", "yeniden refah*", "zafer partisi*", "cumhurbaşkan*",
+  "erdoğan*", "özgür özel*", "bahçeli*", "imamoğlu*", "mansur yavaş*",
+  "bakan*", "milletvekil*", "seçim*", "kabine*", "anayasa*", "muhalefet*",
+  "iktidar*", "kurultay*", "genel başkan*", "siyas*", "dışişleri*", "ysk",
+]
+
+[kategori.ekonomi]
+etiket = "Ekonomi"
+url = [
+  "ekonomi", "finans", "para", "piyasa", "piyasalar", "doviz", "altin",
+  "kripto", "kripto-para", "sirketler", "is-dunyasi", "enerji", "emlak",
+  "bankacilik", "ekonomi-haberleri",
+]
+kelime = [
+  "ekonomi*", "enflasyon*", "faiz*", "merkez bankası*", "tcmb", "dolar*",
+  "euro", "sterlin*", "döviz*", "gram altın*", "altın fiyat*", "ons altın*",
+  "çeyrek altın*", "asgari ücret*", "emekli*", "maaş*", "zam", "zamlı*",
+  "zammı*", "vergi*", "ihracat*", "ithalat*", "büyüme rakam*", "işsizlik*",
+  "kredi*", "banka*", "akaryakıt*", "benzin*", "motorin*", "tüik", "hazine*",
+  "bütçe*", "kripto*", "bitcoin*", "piyasa*", "imf", "fed", "ecb",
+  "mehmet şimşek*", "karahan*",
+]
+
+[kategori.borsa]
+etiket = "Borsa"
+url = ["borsa", "bist", "borsa-istanbul", "hisse", "halka-arz"]
+kelime = [
+  "borsa*", "bist*", "hisse", "hisseler*", "hissesi*", "hisse senedi*",
+  "halka arz*", "temettü*", "endeks*", "spk", "viop", "bedelsiz sermaye*",
+  "nasdaq", "dow jones", "s&p", "kap bildirim*",
+]
+
+[kategori.spor]
+etiket = "Spor"
+url = [
+  "spor", "futbol", "basketbol", "voleybol", "super-lig", "transfer",
+  "galatasaray", "fenerbahce", "besiktas", "trabzonspor", "formula-1", "tenis",
+]
+kelime = [
+  "süper lig*", "galatasaray*", "fenerbahçe*", "beşiktaş*", "trabzonspor*",
+  "başakşehir*", "milli takım*", "a milli*", "uefa*", "fifa*",
+  "şampiyonlar ligi*", "avrupa ligi*", "konferans ligi*", "transfer*",
+  "teknik direktör*", "futbol*", "basketbol*", "voleybol*", "euroleague*",
+  "nba", "formula 1", "tenis*", "olimpiyat*", "maç", "maçı*", "maçta*",
+  "maçın*", "maçında*", "gol", "golü*", "goller*", "hakem*", "derbi*", "tff",
+]
+
+[kategori.dunya]
+etiket = "Dünya"
+url = ["dunya", "dunyadan"]
+kelime = []
+
+[kategori.medya]
+etiket = "Medya"
+url = ["medya", "televizyon", "tv"]
+kelime = ["rtük*", "reyting*", "rating*", "riak", "tiak", "televizyon*", "radyo*", "dizi*", "yayın akış*"]
+
+[kategori.gundem]
+etiket = "Gündem"
+url = ["gundem", "guncel", "turkiye", "haber"]
+kelime = []
+
+
+# ------------------------------------------------------------
+#  KAYNAKLAR  (bilgin.pro/referanslar — 12.11.2026 itibarıyla 42 logo)
+#  aktif = false olanlar taranmaz. "rss" verilmezse bot
+#  /export/rss -> /rss -> /export/newsmap sırasıyla kendisi bulur.
+# ------------------------------------------------------------
+
+[[kaynak]]
+ad = "CNBC-e"
+url = "https://www.cnbce.com"
+aktif = true
+
+[[kaynak]]
+ad = "tv100"
+url = "https://www.tv100.com"
+aktif = true
+
+[[kaynak]]
+ad = "Halk TV"
+url = "https://halktv.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Nefes"
+url = "https://www.nefes.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Oda TV"
+url = "https://www.odatv.com"
+aktif = true
+
+[[kaynak]]
+ad = "Oksijen"
+url = "https://gazeteoksijen.com"
+aktif = true
+
+[[kaynak]]
+ad = "Dünya"
+url = "https://www.dunya.com"
+aktif = true
+
+[[kaynak]]
+ad = "Haber Global"
+url = "https://www.haberglobal.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Ekonomim"
+url = "https://www.ekonomim.com"
+aktif = true
+
+[[kaynak]]
+ad = "Aydınlık"
+url = "https://www.aydinlik.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Yeniçağ"
+url = "https://www.yenicaggazetesi.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Kontra Spor"
+url = "https://www.kontraspor.com"
+aktif = true
+
+[[kaynak]]
+ad = "İnternet Haber"
+url = "https://www.internethaber.com"
+aktif = true
+
+[[kaynak]]
+ad = "F5 Haber"
+url = "https://www.f5haber.com"
+aktif = true
+
+[[kaynak]]
+ad = "KRT TV"
+url = "https://www.krttv.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Borsamatik"
+url = "https://www.borsamatik.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Monay"
+url = "https://www.monay.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Gerçek Gündem"
+url = "https://www.gercekgundem.com"
+aktif = true
+
+[[kaynak]]
+ad = "HaberEt"
+url = "https://www.haberet.com"
+aktif = true
+
+[[kaynak]]
+ad = "Nokta Gazetesi"
+url = "https://www.noktagazetesi.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Yeni Ankara"
+url = "https://www.yeniankara.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Artı Gerçek"
+url = "https://artigercek.com"
+aktif = true
+
+[[kaynak]]
+ad = "Ekran Haber"
+url = "https://ekranhaber.com"
+aktif = true
+
+[[kaynak]]
+ad = "Haber Ankara"
+url = "https://www.haberankara.com"
+aktif = true
+
+[[kaynak]]
+ad = "Ulusal"
+url = "https://www.ulusal.com.tr"
+aktif = true
+
+[[kaynak]]
+ad = "Süper Haber"
+url = "https://www.superhaber.com"
+aktif = true
+
+[[kaynak]]
+ad = "Para Durumu"
+url = "https://www.paradurumu.com"
+aktif = true
+
+[[kaynak]]
+ad = "Haber3"
+url = "https://www.haber3.com"
+aktif = true
+
+[[kaynak]]
+ad = "Medyatava"
+url = "https://www.medyatava.com"
+aktif = true
+
+[[kaynak]]
+ad = "Medyaradar"
+url = "https://www.medyaradar.com"
+aktif = true
+
+[[kaynak]]
+ad = "Medyafaresi"
+url = "https://www.medyafaresi.com"
+aktif = true
+
+[[kaynak]]
+ad = "Gazeteoku"
+url = "https://www.gazeteoku.com"
+aktif = true
+
+[[kaynak]]
+ad = "Haber Fokus"
+url = "https://www.haberfokus.com"
+aktif = true
+
+# ---- Varsayılan olarak kapalı olanlar (haber sitesi değil / konu dışı) ----
+
+[[kaynak]]
+ad = "Gazete Duvar"
+url = "https://www.gazeteduvar.com.tr"
+aktif = false
+not = "Mart 2025'te yayın hayatına son verdiği bildiriliyor"
+
+[[kaynak]]
+ad = "Chip"
+url = "https://www.chip.com.tr"
+aktif = false
+not = "Teknoloji dergisi"
+
+[[kaynak]]
+ad = "Teknolojioku"
+url = "https://www.teknolojioku.com"
+aktif = false
+not = "Teknoloji"
+
+[[kaynak]]
+ad = "Elele"
+url = "https://www.elele.com.tr"
+aktif = false
+not = "Kadın/yaşam dergisi"
+
+[[kaynak]]
+ad = "Show Radyo"
+url = "https://www.showradyo.com.tr"
+aktif = false
+not = "Radyo sitesi"
+
+[[kaynak]]
+ad = "Radyo Viva"
+url = "https://www.radyoviva.com.tr"
+aktif = false
+not = "Radyo sitesi"
+
+[[kaynak]]
+ad = "Sacit Aslan"
+url = "https://www.sacitaslan.com"
+aktif = false
+not = "Kişisel gazeteci sitesi"
+
+[[kaynak]]
+ad = "Basın İlan Kurumu"
+url = "https://bik.gov.tr"
+aktif = false
+not = "Kurum sitesi"
+
+[[kaynak]]
+ad = "Anadolu Ajansı"
+url = "https://www.aa.com.tr"
+rss = ["https://www.aa.com.tr/tr/rss/default?cat=guncel"]
+aktif = false
+not = "Referans sayfasındaki logo bilgin.pro'ya gidiyor; AA'nın kendi RSS'i"
